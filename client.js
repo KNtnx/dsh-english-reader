@@ -2143,7 +2143,7 @@ window.__ModuleLoader__.load({
               type: 'button',
               ref: (node) => { rowRefs.current[position] = node },
               'aria-current': position === index ? 'true' : undefined,
-              className: `er-passage${position === index ? ' er-passage-on' : ''}${position < index ? ' er-done' : ''}${newParagraph ? ' er-passage-para' : ''}`,
+              className: `er-passage${position === index ? ' er-passage-on' : ''}${position !== index ? ' er-dim' : ''}${newParagraph ? ' er-passage-para' : ''}`,
               title: dialogue ? `${name} · ${voiceLabel(sentence.slot)}` : undefined,
               onClick: () => {
                 if ((window.getSelection()?.toString() ?? '') !== '') return
@@ -2722,7 +2722,9 @@ window.__ModuleLoader__.load({
 .er-passage-on .er-mark{color:var(--dsw-alias-brand-primary,#4b7bec)}
 .er-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .er-line{display:block;font-size:calc((var(--dsh-content-font-size-secondary,13px) + 1px) * var(--er-scale,1));line-height:1.62;overflow-wrap:anywhere}
-.er-done .er-line{color:var(--dsw-alias-label-secondary,#666)}
+.er-dim .er-line{color:var(--dsw-alias-label-secondary,#666)}
+/* The current sentence is the only one at full strength; translation follows it. */
+.er-passage-on .er-trans{color:var(--dsw-alias-label-primary,#111)}
 .er-w{border-radius:3px;padding:0.05em 0.1em;margin:-0.05em -0.1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 .er-w-on{background:color-mix(in srgb, var(--dsw-alias-brand-primary,#4b7bec) 24%, transparent)}
 .er-passage-on .er-w-on{background:color-mix(in srgb, var(--dsw-alias-brand-primary,#4b7bec) 30%, transparent)}
