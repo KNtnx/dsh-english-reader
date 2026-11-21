@@ -199,3 +199,15 @@ Entries come from **Wiktionary**'s public REST API (no key). The host caches the
 ## Dictionary entry
 
 The book button at the far right of the display bar opens a pinned lookup card: type a word or phrase and press Enter. It stays open until closed, so reading continues underneath.
+
+
+## Chinese dictionary
+
+Chinese meanings come from **iciba** (a 简明-style dictionary, no key), grouped by part of speech — `adj. 神圣的；虔诚的`. English still comes from Wiktionary. The setting offers Both / English / Chinese only, and translation is only a fallback when neither has the phrase.
+
+## Saved words
+
+- **Left-click a row to expand the entry in place**: Chinese by part of speech, English definitions with examples, and the sentence the word was saved from.
+- The book button moves an entry into the pinned lookup card; the cross removes it.
+- Both the saved-words page and the library have a **Back** control returning to the dialogue you came from.
+- Both pages carry the same width and size controls as the reader.

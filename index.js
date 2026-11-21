@@ -177,6 +177,41 @@ async function lookUpWord(word) {
   return entry;
 }
 
+/** Chinese meanings, grouped by part of speech, the way a 简明 dictionary lists them. */
+const chineseCache = new Map();
+
+async function lookUpChinese(word) {
+  if (chineseCache.has(word)) return chineseCache.get(word);
+  let payload;
+  try {
+    const response = await fetch(
+      `https://dict-mobile.iciba.com/interface/index.php?c=word&m=getsuggest&nums=1&is_need_mean=1&word=${encodeURIComponent(word)}`,
+      { headers: { 'user-agent': 'Mozilla/5.0' }, signal: AbortSignal.timeout(9000) },
+    );
+    if (!response.ok) return null;
+    payload = await response.json();
+  } catch {
+    return null;
+  }
+  const first = Array.isArray(payload?.message) ? payload.message[0] : null;
+  if (first === null) return null;
+  const senses = [];
+  for (const group of first.means ?? []) {
+    const meanings = (group.means ?? []).filter((text) => typeof text === 'string' && text !== '');
+    if (meanings.length === 0) continue;
+    senses.push({ pos: String(group.part ?? ''), def: meanings.join('；') });
+    if (senses.length >= 6) break;
+  }
+  if (senses.length === 0) return null;
+  const entry = { word: String(first.key ?? word), phonetic: '', senses, source: 'iciba' };
+  chineseCache.set(word, entry);
+  if (chineseCache.size > DICTIONARY_LIMIT) {
+    const oldest = chineseCache.keys().next();
+    if (!oldest.done) chineseCache.delete(oldest.value);
+  }
+  return entry;
+}
+
 /** Wiktionary definitions arrive as HTML; the card wants plain sentences. */
 function plainText(html) {
   return String(html ?? '')
@@ -1256,11 +1291,16 @@ export function apply(ctx, config) {
       const word = dictKey(url.searchParams.get('word') ?? '');
       if (word === '') return Response.json({ ok: false, code: 'badWord' }, { status: 400 });
       if (!/^[a-z][a-z' -]{0,48}$/.test(word)) return Response.json({ ok: false, code: 'badWord' }, { status: 400 });
-      const entry = await lookUpWord(word);
-      if (entry === null) {
+      const kinds = String(url.searchParams.get('kinds') ?? 'both');
+      // "en" is Wiktionary, "zh" is the Chinese 简明-style entry; ask only for what is wanted.
+      const [en, zh] = await Promise.all([
+        kinds === 'zh' ? null : lookUpWord(word),
+        kinds === 'en' ? null : lookUpChinese(word),
+      ]);
+      if (en === null && zh === null) {
         return Response.json({ ok: false, code: 'notFound' }, { headers: { 'cache-control': 'no-store' } });
       }
-      return Response.json({ ok: true, entry }, { headers: { 'cache-control': 'no-store' } });
+      return Response.json({ ok: true, en, zh }, { headers: { 'cache-control': 'no-store' } });
     },
   }), 'english-reader: dictionary route');
 
