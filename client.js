@@ -87,6 +87,7 @@ window.__ModuleLoader__.load({
         'guide.desc': 'Paste an English dialogue and hear it read in two voices, resuming where you stopped.',
         'launcher': 'Dialogue reader',
         'header.edit': 'Edit text',
+        'library.edit': 'Edit this text',
         'header.library': 'Library',
         'display.width': 'Width',
         'dict.title': 'Dictionary',
@@ -298,6 +299,7 @@ window.__ModuleLoader__.load({
         'guide.desc': '粘贴一段英语对话，用两个声音朗读，并从上次停下的地方继续。',
         'launcher': '对话朗读',
         'header.edit': '编辑文本',
+        'library.edit': '编辑这段文本',
         'header.library': '对话库',
         'display.width': '宽度',
         'dict.title': '字典',
@@ -846,6 +848,7 @@ window.__ModuleLoader__.load({
       ],
       repeat: 'M7 7h8V4l4 4-4 4V9H9v4H7zm10 10H9v3l-4-4 4-4v3h6v-4h2z',
       edit: 'M4 17.2V20h2.8L17 9.8 14.2 7 4 17.2zM19.7 7.3a1 1 0 0 0 0-1.4l-1.6-1.6a1 1 0 0 0-1.4 0l-1.2 1.2 3 3z',
+      rename: 'M5 8h9v2H5zm0 5h6v2H5zM16.5 15.6l1.4-1.4 1.9 1.9-1.4 1.4zM14 17.1l2.3 2.3-2.9.6z',
       restart: 'M12 5V2L7.5 6 12 10V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z',
       headset: 'M12 3a8 8 0 0 0-8 8v5a3 3 0 0 0 3 3h2v-8H6v-.5A6 6 0 0 1 18 11v.5h-3v8h2a3 3 0 0 0 3-3v-5a8 8 0 0 0-8-8z',
       library: 'M4 5h3v14H4zm5 0h3v14H9zm5 0h2.6l3 14-2.6.5z',
@@ -1592,6 +1595,18 @@ window.__ModuleLoader__.load({
         requestAnimationFrame(() => { rootRef.current?.querySelector('textarea')?.focus() })
       }, [active, cancelPlayback])
 
+      /** Open one dialogue's text in the editor without reading it first. */
+      const editItem = useCallback((item) => {
+        saveRef.current?.()
+        cancelPlayback()
+        setActiveId(item.id)
+        setDraft(item.text ?? '')
+        setDraftMode(item.mode ?? 'auto')
+        setEditingId(item.id)
+        setView('editor')
+        requestAnimationFrame(() => { rootRef.current?.querySelector('textarea')?.focus() })
+      }, [cancelPlayback])
+
       const cancelEditor = useCallback(() => {
         setView(active === null ? 'library' : 'reader')
         requestAnimationFrame(() => { rootRef.current?.focus() })
@@ -2289,9 +2304,13 @@ window.__ModuleLoader__.load({
                 onClick: () => togglePin(item.id),
               }, glyph(ICON.pin, 12)),
               h('button', {
+                type: 'button', className: 'er-entry-act', title: t('library.edit'), 'aria-label': t('library.edit'),
+                onClick: () => editItem(item),
+              }, glyph(ICON.edit, 12)),
+              h('button', {
                 type: 'button', className: 'er-entry-act', title: t('rename'), 'aria-label': t('rename'),
                 onClick: () => { setNameDraft(item.title ?? ''); setRenamingItem(item.id) },
-              }, glyph(ICON.edit, 12)),
+              }, glyph(ICON.rename, 12)),
               h('button', {
                 type: 'button',
                 className: `er-entry-del${confirmDelete === item.id ? ' er-entry-del-on' : ''}`,
