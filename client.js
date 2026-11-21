@@ -1931,9 +1931,10 @@ window.__ModuleLoader__.load({
           if (payload.ok === true) { en = payload.en ?? null; zh = payload.zh ?? null; }
         } catch { /* fall through to translation */ }
         if (en !== null || zh !== null) {
-          setCardEntry({ word, phonetic: en?.phonetic ?? '', senses: en?.senses ?? [], translation: zh?.senses ?? [], source: 'dict' });
+          const found = { word, phonetic: en?.phonetic ?? '', senses: en?.senses ?? [], translation: zh?.senses ?? [], source: 'dict' };
+          setCardEntry(found);
           setCardState('ready');
-          return;
+          return found;
         }
         // No dictionary entry at all: a plain translation is still worth showing.
         try {
@@ -1950,9 +1951,10 @@ window.__ModuleLoader__.load({
           const payload = await response.json().catch(() => ({}));
           const translated = Array.isArray(payload?.translations) ? payload.translations[0] : '';
           if (typeof translated === 'string' && translated !== '') {
-            setCardEntry({ word, phonetic: '', senses: [], translation: [{ pos: '', def: translated }], source: 'translate' });
+            const fallback = { word, phonetic: '', senses: [], translation: [{ pos: '', def: translated }], source: 'translate' };
+            setCardEntry(fallback);
             setCardState('ready');
-            return;
+            return fallback;
           }
           setCardState('missing');
         } catch {
@@ -2265,15 +2267,11 @@ window.__ModuleLoader__.load({
         setOpenWordId(item.id)
         const empty = (item.senses ?? []).length === 0 && (item.translation ?? []).length === 0
         if (!empty) return
-        void lookUp(item.word).then(() => {
-          setCardEntry((current) => {
-            if (current !== null) {
-              setWords((all) => all.map((entry) => (entry.id === item.id
-                ? { ...entry, senses: current.senses ?? [], translation: current.translation ?? [] }
-                : entry)))
-            }
-            return current
-          })
+        void lookUp(item.word).then((found) => {
+          if (found === undefined) return
+          setWords((all) => all.map((entry) => (entry.id === item.id
+            ? { ...entry, senses: found.senses ?? [], translation: found.translation ?? [] }
+            : entry)))
         })
       }
 
@@ -2316,7 +2314,7 @@ window.__ModuleLoader__.load({
                   ? h('div', { className: 'er-wrow-body' },
                     chinese.length === 0 && english.length === 0
                       ? h('p', { className: 'er-wordcard-note' }, t('dict.loading'))
-                      : h(null),
+                      : null,
                     chinese.length > 0
                       ? h('div', { className: 'er-wrow-zh' }, chinese.map((sense, at) => h('div', {
                         key: at, className: 'er-wordcard-trline',
