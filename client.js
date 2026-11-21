@@ -839,7 +839,6 @@ window.__ModuleLoader__.load({
       next: 'M15 5h2v14h-2zM6 5l9 7-9 7z',
       chain: 'M4 12h6v2H4zm10 0h6v2h-6zM9 7h6v2H9zm0 8h6v2H9z',
       // An open book with an A on the page: the dictionary, unmistakably.
-      back: 'M14 6l-6 6 6 6',
       book: [
         'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20',
         'm8 13 4-7 4 7',
@@ -2209,7 +2208,7 @@ window.__ModuleLoader__.load({
         ? h('button', {
           type: 'button', className: 'er-back-row',
           onClick: () => goView(returnView.current),
-        }, glyph(ICON.back, 13), h('span', null, t('backRow')))
+        }, h('span', { className: 'er-back-arrow', 'aria-hidden': true }, '\u2190'), h('span', null, t('backRow')))
         : headerMeta === '' ? null : h('div', { className: 'er-meta' }, headerMeta)
 
       const header = h('div', { className: 'er-head' },
@@ -3095,7 +3094,8 @@ window.__ModuleLoader__.load({
 .er-head{display:flex;align-items:flex-start;gap:1px;padding:10px 8px 8px 12px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6))}
 .er-head-text{flex:1;min-width:0;padding:3px 6px 0 0}
 .er-title{font-size:calc(var(--dsh-content-font-size-secondary,13px) + 0.5px);font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.er-back-row{display:inline-flex;align-items:center;gap:3px;margin:1px 0 0 -3px;padding:1px 4px 1px 2px;border:0;border-radius:var(--dsw-radius-xs,5px);background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);line-height:1.4;cursor:pointer;font-family:inherit}
+.er-back-row{display:inline-flex;align-items:baseline;gap:4px;margin:1px 0 0 -3px;padding:1px 4px 1px 2px;border:0;border-radius:var(--dsw-radius-xs,5px);background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);line-height:1.4;cursor:pointer;font-family:inherit}
+.er-back-arrow{font-size:1.05em;line-height:1}
 .er-back-row:hover{color:var(--dsw-alias-label-primary,#111);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}
 .er-meta{margin-top:2px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);line-height:1.4;color:var(--dsw-alias-label-secondary,#666)}
 .er-glyph{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;border-radius:var(--dsw-radius-xs,5px);background:transparent;color:var(--dsw-alias-label-secondary,#666);cursor:pointer}
