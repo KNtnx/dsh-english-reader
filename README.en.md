@@ -37,7 +37,11 @@ It handles both shapes: a hard-wrapped **article** is joined into sentences inst
 - **Sentence translation**: Harness models (pick provider, then model), Google, Microsoft, Tencent.
 - **Article vs dialogue**: hard wraps are joined, paragraphs split on blank lines, two voices only when two speakers are actually detected.
 - **Dialogue library**: keep many texts, rename, pin, delete; each row shows "sentence n of m".
-- **Reading width and type size**: narrow / medium / wide / custom, three type presets plus an exact pixel size.
+- **Loop and continuous playback**: looping one sentence and "continue to the next" are separate switches; turn the second off and playback stops on the sentence.
+- **Right-click a word**: only the sentence being read splits into words; hovering outlines them, right-click opens the definition.
+- **Chinese and English dictionaries**: Chinese meanings grouped by part of speech (简明-style), English definitions with examples; choose both, English only, or Chinese only.
+- **Saved words**: save from the card, reach the list from the header, and expand an entry in place with its examples and source sentence.
+- **Reading width and type size**: narrow / medium / wide / custom, three type presets plus an exact pixel size, shared by the reader, the library and the saved words.
 
 ## Install
 
@@ -80,6 +84,21 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 
 **Keys never reach the browser**: the panel only sees `hasKey: true`. Source records live in `$DSH_HOME/dsh-english-reader/sources.json` (mode `0600`), and the host attaches the key for connection tests, model lists and voice lists.
 
+<p align="center">
+  <img src="docs/words.png" width="640" alt="Saved words: an entry expands in place with Chinese senses by part of speech and English definitions with examples"/>
+</p>
+
+## Dictionaries
+
+| Dictionary | Source | Notes |
+| --- | --- | --- |
+| Chinese | iciba | Grouped by part of speech, **no key**; phrases work too |
+| English | Wiktionary | Definitions and examples, no key |
+
+The setting offers Both / English / Chinese only. Translation is only used when neither has an entry, which mostly means an unusual phrase. The host caches the last 200 lookups.
+
+Lookups are limited to the sentence being read: every other sentence stays plain text, so a long article never pays for per-word nodes.
+
 ## Translation sources
 
 | Source | Needs | Notes |
@@ -92,6 +111,7 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 ## Privacy
 
 - Text is synthesized only by the engine you pick: the local model stays offline, Edge and custom APIs send the sentence to that vendor.
+- A lookup sends only the word you right-clicked to the dictionary source, never the whole text.
 - API keys stay on the host and are never sent to the browser or written to browser storage.
 - Local models and source records live under `$DSH_HOME/dsh-english-reader/` and are not uploaded.
 - Translation and speech requests are made from the host, never from the panel.
