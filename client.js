@@ -90,6 +90,11 @@ window.__ModuleLoader__.load({
         'header.library': 'Library',
         'display.width': 'Width',
         'dict.title': 'Dictionary',
+        'settings.dict': 'Dictionary',
+        'dict.kind.both': 'Both',
+        'dict.kind.en': 'English',
+        'dict.kind.zh': 'Chinese',
+        'dict.kindHint': 'English definitions come from Wiktionary (no key needed); the Chinese gloss uses the translation source above.',
         'dict.placeholder': 'Look up a word or phrase',
         'dict.loading': 'Looking it up…',
         'dict.missing': 'No entry found. Try the phrase in the box above.',
@@ -292,6 +297,11 @@ window.__ModuleLoader__.load({
         'header.library': '对话库',
         'display.width': '宽度',
         'dict.title': '字典',
+        'settings.dict': '字典',
+        'dict.kind.both': '中英',
+        'dict.kind.en': '英英',
+        'dict.kind.zh': '中英（仅中文）',
+        'dict.kindHint': '英文释义来自 Wiktionary（免密钥），中文释义使用上方的翻译来源。',
         'dict.placeholder': '查单词或词组',
         'dict.loading': '正在查询…',
         'dict.missing': '没查到，试试在上面的输入框里查词组。',
@@ -793,13 +803,28 @@ window.__ModuleLoader__.load({
         h('path', { d: path, fill: 'currentColor' }))
     }
 
+    /** Line-art variant: some shapes are illegible as a filled path at 16px. */
+    function glyphLine(paths, size) {
+      const box = size ?? 18
+      return h('svg', {
+        viewBox: '0 0 24 24', width: box, height: box, 'aria-hidden': true, focusable: 'false',
+        fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8',
+        'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+      }, paths.map((d, at) => h('path', { key: at, d })))
+    }
+
     const ICON = {
       play: 'M8 5.5v13l11-6.5z',
       pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
       prev: 'M7 5h2v14H7zm11 0v14l-9-7z',
       next: 'M15 5h2v14h-2zM6 5l9 7-9 7z',
       chain: 'M4 12h6v2H4zm10 0h6v2h-6zM9 7h6v2H9zm0 8h6v2H9z',
-      book: 'M5 4h9a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H5zm0 2v11h9a5 5 0 0 1 2 .4V7a2 2 0 0 0-2-2z',
+      // An open book with an A on the page: the dictionary, unmistakably.
+      book: [
+        'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20',
+        'm8 13 4-7 4 7',
+        'M9.1 11h5.7',
+      ],
       repeat: 'M7 7h8V4l4 4-4 4V9H9v4H7zm10 10H9v3l-4-4 4-4v3h6v-4h2z',
       edit: 'M4 17.2V20h2.8L17 9.8 14.2 7 4 17.2zM19.7 7.3a1 1 0 0 0 0-1.4l-1.6-1.6a1 1 0 0 0-1.4 0l-1.2 1.2 3 3z',
       restart: 'M12 5V2L7.5 6 12 10V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z',
@@ -893,6 +918,7 @@ window.__ModuleLoader__.load({
       /** The reading measure the user dragged, and how wide the panel actually is. */
       const [columnWidth, setColumnWidth] = useState(() => (typeof initial.columnWidth === 'number' && initial.columnWidth > 0 ? initial.columnWidth : 0))
       const [panelWidth, setPanelWidth] = useState(0)
+      const [panelHeight, setPanelHeight] = useState(0)
       const [fontScale, setFontScale] = useState(() => (typeof initial.fontScale === 'number' && initial.fontScale > 0 ? initial.fontScale : 1))
       /** Exact values typed by the user: a share of the pane, and a font size in px. */
       const [customPct, setCustomPct] = useState(() => (typeof initial.customPct === 'number' && initial.customPct > 0 ? initial.customPct : 0))
@@ -911,6 +937,8 @@ window.__ModuleLoader__.load({
       const [query, setQuery] = useState('')
       const [words, setWords] = useState(() => (Array.isArray(initial.words) ? initial.words : []))
       const [wordFilter, setWordFilter] = useState('')
+      /** What a lookup shows: English definitions, a Chinese gloss, or both. */
+      const [dictKind, setDictKind] = useState(() => (['both', 'en', 'zh'].includes(initial.dictKind) ? initial.dictKind : 'both'))
       const [renamingSource, setRenamingSource] = useState('')
       /** When set, the dialog edits this source instead of adding one. */
       const [editingSource, setEditingSource] = useState('')
@@ -1388,11 +1416,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words,
+            showTranslation, translateSource, translateModel, autoNext, words, dictKind,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictKind])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -1836,9 +1864,14 @@ window.__ModuleLoader__.load({
       useEffect(() => {
         const node = rootRef.current
         if (node === null || typeof ResizeObserver !== 'function') return undefined
-        const observer = new ResizeObserver(() => setPanelWidth(node.getBoundingClientRect().width))
+        const measure = () => {
+          const rect = node.getBoundingClientRect()
+          setPanelWidth(rect.width)
+          setPanelHeight(rect.height)
+        }
+        const observer = new ResizeObserver(measure)
         observer.observe(node)
-        setPanelWidth(node.getBoundingClientRect().width)
+        measure()
         return () => observer.disconnect()
       }, [])
 
@@ -1876,15 +1909,19 @@ window.__ModuleLoader__.load({
         setCardError('');
         setCardEntry(null);
         let entry = null;
-        try {
-          const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
-          const payload = await response.json().catch(() => ({ ok: false }));
-          if (payload.ok === true) entry = payload.entry;
-        } catch { /* fall through to translation */ }
+        // A Chinese-only dictionary never asks for English definitions.
+        if (dictKind !== 'zh') {
+          try {
+            const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
+            const payload = await response.json().catch(() => ({ ok: false }));
+            if (payload.ok === true) entry = payload.entry;
+          } catch { /* fall through to translation */ }
+        }
         if (entry !== null) {
           setCardEntry(entry);
           setCardState('ready');
-          // Definitions are English; one extra request adds the Chinese gloss.
+          // Definitions are English; "both" adds one request for the Chinese gloss.
+          if (dictKind === 'en') return;
           void fetch(TRANSLATE_PATH, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -1924,7 +1961,7 @@ window.__ModuleLoader__.load({
           setCardState('failed');
           setCardError(t('dict.failed'));
         }
-      }, [translateSource, translateModel, translateOptions, t])
+      }, [translateSource, translateModel, translateOptions, dictKind, t])
 
       const openWordCard = useCallback((raw, x, y) => {
         const word = String(raw).trim();
@@ -2137,7 +2174,7 @@ window.__ModuleLoader__.load({
           type: 'button', className: `er-glyph${view === 'words' ? ' er-glyph-on' : ''}`,
           title: t('words.title'), 'aria-label': t('words.title'),
           onClick: () => setView(view === 'words' ? 'reader' : 'words'),
-        }, glyph(ICON.book, 16)),
+        }, glyphLine(ICON.book, 16)),
         h('button', {
           type: 'button',
           className: `er-capsule${modelBusy ? ' er-capsule-busy' : ''}`,
@@ -2556,6 +2593,16 @@ window.__ModuleLoader__.load({
                 ? null
                 : h('p', { className: 'er-fine' }, t('voice.manual'))),
             h('section', { className: 'er-sect' },
+              h('h3', { className: 'er-sect-title' }, t('settings.dict')),
+              h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('settings.dict') },
+                ['both', 'en', 'zh'].map((kind) => h('button', {
+                  key: kind, type: 'button', role: 'radio',
+                  'aria-checked': dictKind === kind ? 'true' : 'false',
+                  className: 'er-seg-btn',
+                  onClick: () => setDictKind(kind),
+                }, t(`dict.kind.${kind}`)))),
+              h('p', { className: 'er-fine' }, t('dict.kindHint'))),
+            h('section', { className: 'er-sect' },
               h('h3', { className: 'er-sect-title' }, t('trans.title')),
               h('button', {
                 type: 'button', className: 'er-toggle-row',
@@ -2752,13 +2799,15 @@ window.__ModuleLoader__.load({
       ] : null
 
       /** One floating card serves the right-click lookup and the pinned dialog. */
+      const cardHeight = Math.max(180, Math.min(panelHeight - 24, 420))
       const wordCard = card === null ? null : h('div', {
         className: `er-wordcard${card.pinned ? ' er-wordcard-pin' : ''}`,
         style: card.pinned
-          ? { right: '12px', top: '12px' }
+          ? { right: '12px', top: '12px', maxHeight: `${cardHeight}px` }
           : {
             left: `${Math.max(8, Math.min(card.x, Math.max(8, panelWidth - 272)))}px`,
-            top: `${Math.max(8, Math.min(card.y, 9999))}px`,
+            top: `${Math.max(8, Math.min(card.y, Math.max(8, panelHeight - cardHeight - 8)))}px`,
+            maxHeight: `${cardHeight}px`,
           },
         role: 'dialog', 'aria-label': t('dict.title'),
         onMouseDown: (event) => event.stopPropagation(),
@@ -2895,7 +2944,7 @@ window.__ModuleLoader__.load({
             setCardState('idle')
             setCard({ word: '', x: 0, y: 0, pinned: true })
           },
-        }, glyph(ICON.book, 16)))
+        }, glyphLine(ICON.book, 16)))
 
       const body = view === 'words' ? wordsPage
         : view === 'library' ? library
@@ -2979,7 +3028,7 @@ window.__ModuleLoader__.load({
 /* Only the sentence being read exposes words, so this box marks what is clickable. */
 .er-passage-on .er-w{cursor:help;transition:background .12s ease,box-shadow .12s ease}
 .er-passage-on .er-w:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 7%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 26%,transparent)}
-.er-wordcard{position:absolute;z-index:45;width:260px;max-height:70%;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:10px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .12s ease-out}
+.er-wordcard{position:absolute;z-index:45;width:260px;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:10px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .12s ease-out}
 .er-wordcard-pin{width:280px}
 .er-wordcard-head{display:flex;align-items:center;gap:6px}
 .er-wordcard-head .er-input{flex:1;min-width:0;height:26px}
