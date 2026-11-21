@@ -109,7 +109,8 @@ window.__ModuleLoader__.load({
         'words.noGloss': 'No definition stored',
         'words.remove': 'Remove',
         'words.lookup': 'Open in the dictionary',
-        'words.context': 'From: ',
+        'words.context': 'From',
+        'words.noContext': 'not from a sentence',
         'back': 'Back',
         'display.width.narrow': 'Narrow',
         'display.width.mid': 'Medium',
@@ -319,7 +320,8 @@ window.__ModuleLoader__.load({
         'words.noGloss': '未保存释义',
         'words.remove': '移除',
         'words.lookup': '在字典中打开',
-        'words.context': '原文：',
+        'words.context': '原文',
+        'words.noContext': '无',
         'back': '返回',
         'display.width.narrow': '窄',
         'display.width.mid': '中',
@@ -973,6 +975,8 @@ window.__ModuleLoader__.load({
       const [renamingItem, setRenamingItem] = useState('')
       /** The word card: where it is anchored, and what it shows. */
       const [card, setCard] = useState(null)
+      const cardRef = useRef(null)
+      cardRef.current = card
       const [cardEntry, setCardEntry] = useState(null)
       const [cardState, setCardState] = useState('idle')
       const [cardError, setCardError] = useState('')
@@ -2023,8 +2027,11 @@ window.__ModuleLoader__.load({
         if (id === '') return;
         setWords((current) => {
           const rest = current.filter((item) => item.id !== id);
-          const sentence = stateRef.current.sentences[stateRef.current.index];
-          return [{ ...entry, id, context: sentence?.text ?? '', addedAt: Date.now() }, ...rest].slice(0, 500);
+          // A word looked up in the dictionary card has no source sentence.
+          const sentence = cardRef.current !== null && cardRef.current.pinned === true
+            ? ''
+            : stateRef.current.sentences[stateRef.current.index]?.text ?? '';
+          return [{ ...entry, id, context: sentence, addedAt: Date.now() }, ...rest].slice(0, 500);
         });
       }, [])
 
@@ -2369,7 +2376,10 @@ window.__ModuleLoader__.load({
                       : null,
                     item.context === undefined || item.context === ''
                       ? null
-                      : h('p', { className: 'er-wrow-ctx' }, `${t('words.context')}${item.context}`))
+                      : h('p', { className: 'er-wrow-ctx' },
+                        h('span', { className: 'er-wrow-ctx-label' }, t('words.context')),
+                        h('span', { className: 'er-wrow-ctx-text' }, item.context === '' || item.context === undefined
+                          ? t('words.noContext') : item.context)))
                   : null)
             })))
 
@@ -3151,12 +3161,14 @@ window.__ModuleLoader__.load({
 .er-wrow-on{border-left-color:var(--dsw-alias-brand-primary,#4b7bec);background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 4%,transparent)}
 .er-wrow-head{display:flex;align-items:center;gap:2px}
 .er-wrow-head .er-entry-open{flex:1;min-width:0}
-.er-wrow-body{display:flex;flex-direction:column;gap:6px;padding:2px 12px 10px 12px;animation:er-pop .12s ease-out}
+.er-wrow-body{display:flex;flex-direction:column;gap:4px;padding:0 12px 8px 12px;animation:er-pop .12s ease-out}
 .er-wrow-head .er-entry-title{font-size:calc((var(--dsh-content-font-size-secondary,13px) + 1px) * var(--er-scale,1))}
 .er-wrow-head .er-entry-meta{font-size:calc((var(--dsh-content-font-size-secondary,13px) - 2px) * var(--er-scale,1))}
-.er-wrow-zh{font-family:Georgia,'Songti SC',serif;font-size:calc((var(--dsh-content-font-size-secondary,13px) - 0.5px) * var(--er-scale,1));color:var(--dsw-alias-label-primary,#111);line-height:1.5}
-.er-wrow-en{display:flex;flex-direction:column;gap:5px}
-.er-wrow-ctx{padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#999);line-height:1.45}
+.er-wrow-zh{display:flex;flex-direction:column;gap:2px;font-family:Georgia,'Songti SC',serif;font-size:calc((var(--dsh-content-font-size-secondary,13px) + 0.5px) * var(--er-scale,1));color:var(--dsw-alias-label-primary,#111);line-height:1.5}
+.er-wrow-en{display:flex;flex-direction:column;gap:3px}
+.er-wrow-ctx{display:flex;gap:6px;margin:2px 0 0;padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) * var(--er-scale,1));line-height:1.5;color:var(--dsw-alias-label-secondary,#888)}
+.er-wrow-ctx-label{flex:0 0 auto;font-family:inherit;font-style:normal;color:var(--dsw-alias-label-secondary,#aaa)}
+.er-wrow-ctx-text{min-width:0;color:var(--dsw-alias-label-secondary,#777)}
 .er-words-bar{padding:0 0 4px}
 /* The current sentence is the only one at full strength; translation follows it. */
 .er-passage-on .er-trans{color:var(--dsw-alias-label-primary,#111)}
