@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
         'words.remove': 'Remove',
         'words.lookup': 'Open in the dictionary',
         'words.context': 'From',
-        'words.noContext': 'not from a sentence',
+        'words.noContext': 'none',
         'backRow': 'Back to this dialogue',
         'display.width.narrow': 'Narrow',
         'display.width.mid': 'Medium',
@@ -990,6 +990,12 @@ window.__ModuleLoader__.load({
           id: String(item.id ?? item.word).toLowerCase(),
           senses: sensesOf(item.senses),
           translation: sensesOf(item.translation),
+          // A context that does not contain the word came from a search, not
+          // from a sentence; earlier releases stored the reading position.
+          context: typeof item.context === 'string'
+            && item.context.toLowerCase().includes(String(item.word).toLowerCase())
+            ? item.context
+            : '',
         })))
       const [wordFilter, setWordFilter] = useState('')
       const [openWordId, setOpenWordId] = useState('')
@@ -1608,9 +1614,11 @@ window.__ModuleLoader__.load({
       }, [cancelPlayback])
 
       const cancelEditor = useCallback(() => {
-        setView(active === null ? 'library' : 'reader')
+        // A draft that was never saved has no dialogue to go back to, so the
+        // library is where the user came from.
+        setView(editingId === null || active === null ? 'library' : 'reader')
         requestAnimationFrame(() => { rootRef.current?.focus() })
-      }, [active])
+      }, [active, editingId])
 
       /** Save the draft into the library and start reading it. */
       const startReading = useCallback(() => {
@@ -2042,12 +2050,12 @@ window.__ModuleLoader__.load({
         setWords((current) => {
           const rest = current.filter((item) => item.id !== id);
           // A word looked up in the dictionary card has no source sentence.
-          const sentence = cardRef.current !== null && cardRef.current.pinned === true
+          const sentence = card !== null && card.pinned === true
             ? ''
             : stateRef.current.sentences[stateRef.current.index]?.text ?? '';
           return [{ ...entry, id, context: sentence, addedAt: Date.now() }, ...rest].slice(0, 500);
         });
-      }, [])
+      }, [card])
 
       /** Ask the host which voices this endpoint can offer. */
       const loadVoices = useCallback(async () => {
@@ -2399,9 +2407,7 @@ window.__ModuleLoader__.load({
                           h('span', null, sense.def)),
                         sense.example === '' ? null : h('div', { className: 'er-sense-eg' }, sense.example))))
                       : null,
-                    item.context === undefined || item.context === ''
-                      ? null
-                      : h('p', { className: 'er-wrow-ctx' },
+                    h('p', { className: 'er-wrow-ctx' },
                         h('span', { className: 'er-wrow-ctx-label' }, t('words.context')),
                         h('span', { className: 'er-wrow-ctx-text' }, item.context === '' || item.context === undefined
                           ? t('words.noContext') : item.context)))
