@@ -1,0 +1,7 @@
+{
+  "meta": {
+    "title": "Dialogue reader",
+    "description": "Paste an English dialogue, hear it read by two alternating voices with the current sentence highlighted, and switch between saved dialogues that each remember where you stopped. Reads through Microsoft Edge online or a local Kokoro model you download with one click; lives in the right sidebar.",
+    "detail": "docs/DETAIL.md"
+  }
+}

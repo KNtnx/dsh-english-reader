@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="36" height="36" viewBox="0 0 36 36" fill="none">
+  <rect x="1" y="1" width="34" height="34" rx="9" fill="#2f6fd0"/>
+  <rect x="1" y="1" width="34" height="34" rx="9" fill="url(#er-glow)"/>
+  <path d="M11.5 9.5h10.2a3.3 3.3 0 0 1 3.3 3.3v6.4a3.3 3.3 0 0 1-3.3 3.3h-4.1l-3.6 2.7v-2.7h-2.5a3.3 3.3 0 0 1-3.3-3.3v-6.4a3.3 3.3 0 0 1 3.3-3.3Z" fill="#ffffff" fill-opacity="0.94"/>
+  <path d="M16.6 15.2h9.2a2.6 2.6 0 0 1 2.6 2.6v4.6a2.6 2.6 0 0 1-2.6 2.6h-1.9v2.3l-3.1-2.3h-4.2a2.6 2.6 0 0 1-2.6-2.6v-4.6a2.6 2.6 0 0 1 2.6-2.6Z" fill="#ffc466" fill-opacity="0.96"/>
+  <g stroke="#2f6fd0" stroke-width="1.5" stroke-linecap="round" opacity="0.75">
+    <path d="M14.4 13.2h4.6"/>
+    <path d="M14.4 16.2h7"/>
+    <path d="M20.1 19.2h3.2"/>
+    <path d="M20.1 21.8h4.6"/>
+  </g>
+  <defs>
+    <linearGradient id="er-glow" x1="2" y1="2" x2="34" y2="34" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#5b93e8" stop-opacity="0.85"/>
+      <stop offset="1" stop-color="#1b4d9c" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+</svg>

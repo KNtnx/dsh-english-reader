@@ -1,0 +1,124 @@
+<div align="center">
+
+<img src="icon.svg" width="64" alt="dsh-english-reader"/>
+
+# dsh-english-reader
+
+**Read English aloud inside DeepSeek Harness: paste a passage, follow sentence by sentence, resume exactly where you stopped.**
+
+A right-sidebar tab, or a full-width panel of its own. Word-level highlighting, sentence translation, Microsoft Edge and local Kokoro engines, plus your own TTS API.
+
+[中文](README.md) · [English](README.en.md)
+
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green?style=flat-square" alt="License"></a>
+<a href="https://github.com/deepseek-ai/deepseek-harness"><img src="https://img.shields.io/badge/powered_by-dsh-4D6BFE?style=flat-square&logo=deepseek&logoColor=white" alt="powered by dsh"></a>
+
+</div>
+
+## Why
+
+Reading English long-form splits your attention: the audio is on sentence 12 while your eyes are on sentence 30, and coming back loses both.
+
+This plugin ties "what is spoken" to "what is read": sentence-level seeking, word-level highlighting, persisted progress. Close the panel, restart Harness — you land on the same sentence.
+
+It handles both shapes: a hard-wrapped **article** is joined into sentences instead of being split mid-thought, and a labelled **dialogue** (`Emma: Hi` / `Daniel: Hello`) is detected and read by two alternating voices.
+
+<br clear="all">
+
+## Features
+
+- **Two entry points**: a right-sidebar tab, or a full-width side panel (no composer in the way).
+- **Sentence playback with resume**: click any sentence to start there; progress is persisted.
+- **Word-level highlight**: Edge reports **real word timestamps**, so the current word tracks the audio. The local engine estimates.
+- **Sentence translation**: Harness models (pick provider, then model), Google, Microsoft, Tencent.
+- **Article vs dialogue**: hard wraps are joined, paragraphs split on blank lines, two voices only when two speakers are actually detected.
+- **Dialogue library**: keep many texts, rename, pin, delete; each row shows "sentence n of m".
+- **Reading width and type size**: narrow / medium / wide / custom, three type presets plus an exact pixel size.
+
+## Install
+
+**From GitHub (recommended)**
+
+In DSH **Plugins → Add plugin**, enter:
+
+```
+github:KNtnx/dsh-english-reader
+```
+
+Or on the command line:
+
+```bash
+dsh plugin --profile web add github:KNtnx/dsh-english-reader
+```
+
+**From a local checkout**
+
+```bash
+git clone https://github.com/KNtnx/dsh-english-reader.git
+dsh plugin --profile web add link:./dsh-english-reader
+```
+
+Replace `web` with your profile (Desktop builds usually use `desktop`), then restart `dsh web`.
+
+> Two runtime dependencies ship with the plugin (`msedge-tts`, `kokoro-js`). If the panel reports the engine is unavailable, run `npm install --omit=dev` in the plugin directory and restart.
+
+## Speech sources
+
+Edge is built in; everything else is a source you add. Each can be renamed, edited and removed on its own.
+
+| Source | Needs | Notes |
+| --- | --- | --- |
+| Microsoft Edge (online) | nothing | Neural voices, needs a network. Its word boundaries drive the highlight. |
+| Local model (Kokoro-82M) | an 89 MB download | Runs offline, or point it at a folder you already have (with `config.json` and `onnx/`). |
+| Custom TTS API | endpoint, protocol, model, key | Three protocols: OpenAI-compatible `/audio/speech`, Alibaba DashScope native, Azure Speech (SSML). The domain alone is enough — paths are probed and remembered. |
+
+**Why the protocol is required**: one vendor's endpoints do not share a path or a body. Alibaba's OpenAI-compatible prefix serves chat and embeddings only; speech lives at the native `api/v1/services/audio/tts/SpeechSynthesizer` and returns a download URL.
+
+**Keys never reach the browser**: the panel only sees `hasKey: true`. Source records live in `$DSH_HOME/dsh-english-reader/sources.json` (mode `0600`), and the host attaches the key for connection tests, model lists and voice lists.
+
+## Translation sources
+
+| Source | Needs | Notes |
+| --- | --- | --- |
+| Harness model | nothing | Pick any configured provider route, then a model it advertises |
+| Google | nothing | Keyless `translate.googleapis.com` |
+| Microsoft | key + region | Azure Translator v3 |
+| Tencent | SecretId / SecretKey | TMT `TextTranslateBatch`, TC3-HMAC-SHA256 |
+
+## Privacy
+
+- Text is synthesized only by the engine you pick: the local model stays offline, Edge and custom APIs send the sentence to that vendor.
+- API keys stay on the host and are never sent to the browser or written to browser storage.
+- Local models and source records live under `$DSH_HOME/dsh-english-reader/` and are not uploaded.
+- Translation and speech requests are made from the host, never from the panel.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Blank panel | Check the browser console; usually the client bundle did not load — restart `dsh web` |
+| "Engine unavailable" | Install plugin dependencies: `npm install --omit=dev` in the plugin directory |
+| Local model stuck at "not downloaded" | Press Download and wait for 100%; models live in `$DSH_HOME/dsh-english-reader/models/` |
+| Custom API returns 400 / 401 | Use **Test** in the editor — it names the path and the original response. 401 means the vendor rejected the key |
+| A voice is ignored | Some vendors silently fall back on unknown voices; try a source that reports errors |
+
+## Development
+
+```bash
+node --check index.js
+node --check client.js
+node --check worker.mjs
+dsh plugin --profile web add link:$(pwd)
+```
+
+```
+package.json        plugin manifest (dsh.bundle.patch + dsh.client)
+cordis.patch.yml    host row insertion
+index.js            host: routes, source storage, four translators, two TTS protocol families
+worker.mjs          child process: Edge and Kokoro engines, word-boundary parsing
+client.js           browser: reader panel, settings card, add-source dialog, word highlight
+```
+
+## License
+
+MIT, except where stated otherwise. See [LICENSE](LICENSE).

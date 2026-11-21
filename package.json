@@ -1,0 +1,53 @@
+{
+  "name": "dsh-english-reader",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Paste an English dialogue, hear it read by two alternating Microsoft Edge voices, and pick up exactly where you stopped.",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "index.js",
+    "worker.mjs",
+    "client.js",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "docs",
+    "icon.svg"
+  ],
+  "dependencies": {
+    "kokoro-js": "^1.2.1",
+    "msedge-tts": "^2.1.1"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KNtnx/dsh-english-reader.git"
+  },
+  "homepage": "https://github.com/KNtnx/dsh-english-reader",
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "english",
+    "tts",
+    "edge-tts",
+    "kokoro"
+  ],
+  "license": "MIT"
+}
