@@ -23,6 +23,7 @@ window.__ModuleLoader__.load({
     const VALIDATE = '/api-dsh-english-reader/tts/validate'
     const MODELS = '/api-dsh-english-reader/tts/models'
     const VOICES = '/api-dsh-english-reader/tts/voices'
+    const DICT_PATH = '/api-dsh-english-reader/dict'
     const SPEECH_SOURCE_PATH = '/api-dsh-english-reader/tts/sources'
     /** A home-directory path reads better (and wraps less) as `~/…`. */
     function shortPath(value) {
@@ -88,6 +89,20 @@ window.__ModuleLoader__.load({
         'header.edit': 'Edit text',
         'header.library': 'Library',
         'display.width': 'Width',
+        'dict.title': 'Dictionary',
+        'dict.placeholder': 'Look up a word or phrase',
+        'dict.loading': 'Looking it up…',
+        'dict.missing': 'No entry found. Try the phrase in the box above.',
+        'dict.failed': 'The lookup failed. Check your network and try again.',
+        'dict.hint': 'Right-click for the definition',
+        'dict.save': 'Save word',
+        'dict.saved': 'Saved',
+        'words.title': 'Saved words',
+        'words.filter': 'Filter words or meanings',
+        'words.empty': 'No saved words yet. In the reader, right-click any word in the sentence being read.',
+        'words.none': 'Nothing matches that filter.',
+        'words.noGloss': 'No definition stored',
+        'words.remove': 'Remove',
         'display.width.narrow': 'Narrow',
         'display.width.mid': 'Medium',
         'display.width.wide': 'Wide',
@@ -233,6 +248,8 @@ window.__ModuleLoader__.load({
         'prev': 'Previous sentence',
         'next': 'Next sentence',
         'loop': 'Loop this sentence',
+        'autoNext': 'Continue to the next sentence',
+        'stopped': 'Stopped',
         'loading': 'Preparing audio…',
         'paused': 'Paused',
         'done': 'Finished',
@@ -274,6 +291,20 @@ window.__ModuleLoader__.load({
         'header.edit': '编辑文本',
         'header.library': '对话库',
         'display.width': '宽度',
+        'dict.title': '字典',
+        'dict.placeholder': '查单词或词组',
+        'dict.loading': '正在查询…',
+        'dict.missing': '没查到，试试在上面的输入框里查词组。',
+        'dict.failed': '查询失败，检查网络后重试。',
+        'dict.hint': '右键查看释义',
+        'dict.save': '收藏单词',
+        'dict.saved': '已收藏',
+        'words.title': '我的单词',
+        'words.filter': '筛选单词或释义',
+        'words.empty': '还没有收藏的单词。在阅读时，右键正在朗读那句里的任意单词。',
+        'words.none': '没有匹配的单词。',
+        'words.noGloss': '未保存释义',
+        'words.remove': '移除',
         'display.width.narrow': '窄',
         'display.width.mid': '中',
         'display.width.wide': '宽',
@@ -419,6 +450,8 @@ window.__ModuleLoader__.load({
         'prev': '上一句',
         'next': '下一句',
         'loop': '单句循环',
+        'autoNext': '连读下一句',
+        'stopped': '已停止',
         'loading': '正在准备语音…',
         'paused': '已暂停',
         'done': '已读完',
@@ -765,6 +798,8 @@ window.__ModuleLoader__.load({
       pause: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z',
       prev: 'M7 5h2v14H7zm11 0v14l-9-7z',
       next: 'M15 5h2v14h-2zM6 5l9 7-9 7z',
+      chain: 'M4 12h6v2H4zm10 0h6v2h-6zM9 7h6v2H9zm0 8h6v2H9z',
+      book: 'M5 4h9a3 3 0 0 1 3 3v13a3 3 0 0 0-3-3H5zm0 2v11h9a5 5 0 0 1 2 .4V7a2 2 0 0 0-2-2z',
       repeat: 'M7 7h8V4l4 4-4 4V9H9v4H7zm10 10H9v3l-4-4 4-4v3h6v-4h2z',
       edit: 'M4 17.2V20h2.8L17 9.8 14.2 7 4 17.2zM19.7 7.3a1 1 0 0 0 0-1.4l-1.6-1.6a1 1 0 0 0-1.4 0l-1.2 1.2 3 3z',
       restart: 'M12 5V2L7.5 6 12 10V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z',
@@ -843,6 +878,7 @@ window.__ModuleLoader__.load({
       const [edgeB, setEdgeB] = useState(() => pickVoice(initial.edgeB, EDGE_VOICES, EDGE_VOICES[1].id))
       const [rate, setRate] = useState(() => pickRate(initial.rate))
       const [loop, setLoop] = useState(() => initial.loop === true)
+      const [autoNext, setAutoNext] = useState(() => initial.autoNext !== false)
       const [draft, setDraft] = useState('')
       const [draftMode, setDraftMode] = useState(() => initialItems.find((item) => item.id === initialActive)?.mode ?? 'auto')
       const [editingId, setEditingId] = useState(null)
@@ -867,6 +903,14 @@ window.__ModuleLoader__.load({
       const [fontDraft, setFontDraft] = useState('')
       /** Which library entry or source is being renamed, and to what. */
       const [renamingItem, setRenamingItem] = useState('')
+      /** The word card: where it is anchored, and what it shows. */
+      const [card, setCard] = useState(null)
+      const [cardEntry, setCardEntry] = useState(null)
+      const [cardState, setCardState] = useState('idle')
+      const [cardError, setCardError] = useState('')
+      const [query, setQuery] = useState('')
+      const [words, setWords] = useState(() => (Array.isArray(initial.words) ? initial.words : []))
+      const [wordFilter, setWordFilter] = useState('')
       const [renamingSource, setRenamingSource] = useState('')
       /** When set, the dialog edits this source instead of adding one. */
       const [editingSource, setEditingSource] = useState('')
@@ -897,7 +941,7 @@ window.__ModuleLoader__.load({
       const tokenRef = useRef(0)
       const disposedRef = useRef(false)
       const saveRef = useRef(null)
-      const stateRef = useRef({ index: 0, sentences: [], voiceA: '', voiceB: '', provider: 'edge', rate: 1, loop: false, status: 'idle' })
+      const stateRef = useRef({ index: 0, sentences: [], voiceA: '', voiceB: '', provider: 'edge', rate: 1, loop: false, autoNext: true, status: 'idle' })
       /** Rendered word spans of the sentence on screen, and which one is lit. */
       const wordRefs = useRef([])
       const activeWordRef = useRef(-1)
@@ -1025,7 +1069,7 @@ window.__ModuleLoader__.load({
 
       useLayoutEffect(() => {
         stateRef.current = {
-          index, sentences, voiceA, voiceB, provider, rate, loop, status,
+          index, sentences, voiceA, voiceB, provider, rate, loop, autoNext, status,
           sourceId: activeSource.hostId ?? '',
           baseUrl: activeSource.baseUrl ?? '',
           model: activeSource.model ?? '',
@@ -1291,6 +1335,8 @@ window.__ModuleLoader__.load({
         const onEnded = () => {
           const live = stateRef.current
           if (live.loop) { void playAt(live.index); return }
+          // Continuous playback is a choice: with it off a sentence ends and stops.
+          if (live.autoNext === false) { setStatus('done'); setNoticeKey('stopped'); return }
           if (live.index + 1 < live.sentences.length) { void playAt(live.index + 1); return }
           setStatus('done')
         }
@@ -1341,12 +1387,12 @@ window.__ModuleLoader__.load({
         const at = override?.index === undefined ? index : override.index
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            version: 2, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel,
+            version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
+            showTranslation, translateSource, translateModel, autoNext, words,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -1822,6 +1868,83 @@ window.__ModuleLoader__.load({
         window.addEventListener('pointerup', stop)
       }, [panelWidth])
 
+      /** Fetch one word: the dictionary first, translation when it has no entry. */
+      const lookUp = useCallback(async (raw) => {
+        const word = String(raw).trim();
+        if (word === '') return;
+        setCardState('loading');
+        setCardError('');
+        setCardEntry(null);
+        let entry = null;
+        try {
+          const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}`, { cache: 'no-store' });
+          const payload = await response.json().catch(() => ({ ok: false }));
+          if (payload.ok === true) entry = payload.entry;
+        } catch { /* fall through to translation */ }
+        if (entry !== null) {
+          setCardEntry(entry);
+          setCardState('ready');
+          // Definitions are English; one extra request adds the Chinese gloss.
+          void fetch(TRANSLATE_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ source: translateSource, target: translateOptions?.target ?? 'zh-CN', model: translateModel ?? undefined, texts: [word] }),
+          })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload) => {
+              const text = Array.isArray(payload?.translations) ? payload.translations[0] : '';
+              if (typeof text === 'string' && text !== '') {
+                setCardEntry((current) => (current === null ? current : { ...current, translation: text }));
+              }
+            })
+            .catch(() => {});
+          return;
+        }
+        // Phrases have no dictionary entry, so ask the translation source instead.
+        try {
+          const response = await fetch(TRANSLATE_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({
+              source: translateSource,
+              target: translateOptions?.target ?? 'zh-CN',
+              model: translateModel ?? undefined,
+              texts: [word],
+            }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          const translated = Array.isArray(payload?.translations) ? payload.translations[0] : '';
+          if (typeof translated === 'string' && translated !== '') {
+            setCardEntry({ word, phonetic: '', senses: [], translation: translated, source: 'translate' });
+            setCardState('ready');
+            return;
+          }
+          setCardState('missing');
+        } catch {
+          setCardState('failed');
+          setCardError(t('dict.failed'));
+        }
+      }, [translateSource, translateModel, translateOptions, t])
+
+      const openWordCard = useCallback((raw, x, y) => {
+        const word = String(raw).trim();
+        if (word === '') return;
+        setCard({ word, x, y, pinned: false });
+        void lookUp(word);
+      }, [lookUp])
+
+      /** Keep one entry in the word list, newest first, deduplicated. */
+      const saveWord = useCallback((entry) => {
+        if (entry === null) return;
+        const id = String(entry.word).toLowerCase().replace(/[^a-z' -]/g, '').trim();
+        if (id === '') return;
+        setWords((current) => {
+          const rest = current.filter((item) => item.id !== id);
+          const sentence = stateRef.current.sentences[stateRef.current.index];
+          return [{ ...entry, id, context: sentence?.text ?? '', addedAt: Date.now() }, ...rest].slice(0, 500);
+        });
+      }, [])
+
       /** Ask the host which voices this endpoint can offer. */
       const loadVoices = useCallback(async () => {
         if (activeSource.kind !== 'api') return
@@ -1942,6 +2065,11 @@ window.__ModuleLoader__.load({
       }, [activeSourceId, cancelPlayback])
 
       const onKeyDown = useCallback((event) => {
+        if (event.key === 'Escape' && card !== null) {
+          event.preventDefault()
+          setCard(null)
+          return
+        }
         if (event.key === 'Escape' && addOpen) {
           event.preventDefault()
           setAddOpen(false)
@@ -1966,7 +2094,7 @@ window.__ModuleLoader__.load({
           event.preventDefault()
           if (stateRef.current.index + 1 < stateRef.current.sentences.length) step(1)
         }
-      }, [view, step, toggle, settingsOpen, addOpen])
+      }, [view, step, toggle, settingsOpen, addOpen, card])
 
       const voiceLabel = (slot) => voices.find((voice) => voice.id === (slot === 1 ? voiceB : voiceA))?.label ?? ''
 
@@ -1976,7 +2104,8 @@ window.__ModuleLoader__.load({
       // non-local source as Edge was wrong as soon as endpoints existed.
       // The capsule names the model actually in use, not just its family.
       const engineLabel = activeSource.short ?? activeSource.name
-      const headerTitle = view === 'library' ? t('library.title') : (active?.title ?? t('tab.title'))
+      const headerTitle = view === 'words' ? t('words.title')
+        : view === 'library' ? t('library.title') : (active?.title ?? t('tab.title'))
       const headerMeta = view === 'library'
         ? fill(t('library.count'), { n: items.length })
         : view === 'editor'
@@ -2004,6 +2133,11 @@ window.__ModuleLoader__.load({
           type: 'button', className: 'er-glyph', title: t('header.library'), 'aria-label': t('header.library'),
           onClick: () => setView('library'),
         }, glyph(ICON.library, 16)),
+        h('button', {
+          type: 'button', className: `er-glyph${view === 'words' ? ' er-glyph-on' : ''}`,
+          title: t('words.title'), 'aria-label': t('words.title'),
+          onClick: () => setView(view === 'words' ? 'reader' : 'words'),
+        }, glyph(ICON.book, 16)),
         h('button', {
           type: 'button',
           className: `er-capsule${modelBusy ? ' er-capsule-busy' : ''}`,
@@ -2067,6 +2201,46 @@ window.__ModuleLoader__.load({
           h('button', { type: 'button', className: 'er-cta', onClick: newDialogue }, t('library.new'))))
 
       // ---------------------------------------------------------------- editor
+      const visibleWords = words.filter((item) => {
+        const needle = wordFilter.trim().toLowerCase()
+        if (needle === '') return true
+        return String(item.word).toLowerCase().includes(needle)
+          || (item.senses ?? []).some((sense) => String(sense.def).toLowerCase().includes(needle))
+          || String(item.translation ?? '').toLowerCase().includes(needle)
+      })
+
+      const wordsPage = h('div', { className: 'er-scroll er-words' },
+        h('div', { className: 'er-words-bar' },
+          h('input', {
+            className: 'er-input', value: wordFilter, spellCheck: false,
+            placeholder: t('words.filter'), 'aria-label': t('words.filter'),
+            onChange: (event) => setWordFilter(event.target.value),
+          })),
+        words.length === 0
+          ? h('p', { className: 'er-empty' }, t('words.empty'))
+          : visibleWords.length === 0
+            ? h('p', { className: 'er-empty' }, t('words.none'))
+            : h('ul', { className: 'er-index' }, visibleWords.map((item) => (
+              h('li', { key: item.id, className: 'er-entry' },
+                h('button', {
+                  type: 'button', className: 'er-entry-open',
+                  onClick: () => {
+                    setCardEntry(item)
+                    setCardState('ready')
+                    setCard({ word: item.word, x: 0, y: 0, pinned: true })
+                  },
+                },
+                  h('span', { className: 'er-entry-title' }, item.word),
+                  h('span', { className: 'er-entry-meta' },
+                    [item.phonetic, (item.senses ?? [])[0]?.def, item.translation]
+                      .filter((part) => typeof part === 'string' && part !== '').join(' · ')
+                    || t('words.noGloss'))),
+                h('button', {
+                  type: 'button', className: 'er-entry-del', title: t('words.remove'), 'aria-label': t('words.remove'),
+                  onClick: () => setWords((current) => current.filter((entry) => entry.id !== item.id)),
+                }, glyph(ICON.close, 13))))))
+      )
+
       const editor = h('div', { className: 'er-editor' },
         h('textarea', {
           className: 'er-textarea',
@@ -2117,6 +2291,12 @@ window.__ModuleLoader__.load({
             key,
             className: 'er-w',
             ref: (node) => { wordRefs.current[slot] = node },
+            title: t('dict.hint'),
+            onContextMenu: (event) => {
+              event.preventDefault()
+              const rect = rootRef.current?.getBoundingClientRect?.()
+              openWordCard(part, event.clientX - (rect?.left ?? 0), event.clientY - (rect?.top ?? 0))
+            },
           }, part)
         })
       }
@@ -2167,8 +2347,9 @@ window.__ModuleLoader__.load({
 
       const notice = status === 'done' ? t('done')
         : status === 'paused' ? t('paused')
-          : noticeKey === 'resumed' ? t('resumed', { n: index + 1 })
-            : noticeKey === 'autoplay' ? t('autoplay') : ''
+          : noticeKey === 'stopped' ? t('stopped')
+            : noticeKey === 'resumed' ? t('resumed', { n: index + 1 })
+              : noticeKey === 'autoplay' ? t('autoplay') : ''
 
       const transport = h('div', { className: 'er-transport' },
         h('button', {
@@ -2193,6 +2374,12 @@ window.__ModuleLoader__.load({
           role: 'switch', 'aria-checked': loop ? 'true' : 'false',
           onClick: () => setLoop((value) => !value),
         }, glyph(ICON.repeat, 16)),
+        h('button', {
+          type: 'button', className: `er-glyph${autoNext ? ' er-glyph-on' : ''}`,
+          'aria-label': t('autoNext'), title: t('autoNext'),
+          role: 'switch', 'aria-checked': autoNext ? 'true' : 'false',
+          onClick: () => setAutoNext((value) => !value),
+        }, glyph(ICON.chain, 16)),
         h('span', { className: 'er-grow' }),
         notice === '' ? null : h('span', { className: 'er-notice-text' }, notice),
         h('span', { className: 'er-count', role: 'status', 'aria-live': 'polite' }, statusText),
@@ -2564,6 +2751,59 @@ window.__ModuleLoader__.load({
             }, validating ? t('add.validating') : (editingSource === '' ? t('add.add') : t('add.save'))))),
       ] : null
 
+      /** One floating card serves the right-click lookup and the pinned dialog. */
+      const wordCard = card === null ? null : h('div', {
+        className: `er-wordcard${card.pinned ? ' er-wordcard-pin' : ''}`,
+        style: card.pinned
+          ? { right: '12px', top: '12px' }
+          : {
+            left: `${Math.max(8, Math.min(card.x, Math.max(8, panelWidth - 272)))}px`,
+            top: `${Math.max(8, Math.min(card.y, 9999))}px`,
+          },
+        role: 'dialog', 'aria-label': t('dict.title'),
+        onMouseDown: (event) => event.stopPropagation(),
+        onContextMenu: (event) => event.preventDefault(),
+      },
+        h('div', { className: 'er-wordcard-head' },
+          card.pinned
+            ? h('input', {
+              className: 'er-input', value: query, autoFocus: true, spellCheck: false,
+              placeholder: t('dict.placeholder'), 'aria-label': t('dict.title'),
+              onChange: (event) => setQuery(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') { event.preventDefault(); void lookUp(query) }
+                if (event.key === 'Escape') { event.preventDefault(); setCard(null) }
+              },
+            })
+            : h('span', { className: 'er-wordcard-word' }, cardEntry?.word ?? card.word),
+          h('button', {
+            type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
+            onClick: () => setCard(null),
+          }, glyph(ICON.close, 14))),
+        cardState === 'loading'
+          ? h('p', { className: 'er-wordcard-note' }, t('dict.loading'))
+          : cardState === 'failed'
+            ? h('p', { className: 'er-wordcard-note er-fine-err' }, cardError)
+            : cardState === 'missing'
+              ? h('p', { className: 'er-wordcard-note' }, t('dict.missing'))
+              : cardEntry === null
+                ? h('p', { className: 'er-wordcard-note' }, t('dict.placeholder'))
+                : h('div', { className: 'er-wordcard-body' },
+                  cardEntry.phonetic === '' ? null : h('div', { className: 'er-wordcard-ph' }, cardEntry.phonetic),
+                  (cardEntry.senses ?? []).map((sense, at) => h('div', { key: at, className: 'er-sense' },
+                    h('div', { className: 'er-sense-line' },
+                      sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
+                      h('span', null, sense.def)),
+                    sense.example === '' ? null : h('div', { className: 'er-sense-eg' }, sense.example))),
+                  cardEntry.translation === undefined || cardEntry.translation === ''
+                    ? null
+                    : h('div', { className: 'er-wordcard-tr' }, cardEntry.translation),
+                  h('div', { className: 'er-wordcard-foot' },
+                    cardState === 'ready' ? h('button', {
+                      type: 'button', className: 'er-add er-add-plain',
+                      onClick: () => saveWord({ ...cardEntry, word: cardEntry.word }),
+                    }, words.some((item) => item.id === String(cardEntry.word).toLowerCase()) ? t('dict.saved') : t('dict.save')) : null)))
+
       // ------------------------------------------------------------------ body
       const errorBar = errorKind === ''
         ? null
@@ -2645,14 +2885,26 @@ window.__ModuleLoader__.load({
               'aria-checked': customPx > 0 ? 'true' : 'false',
               className: 'er-seg-btn',
               onClick: () => { setFontDraft(String(customPx > 0 ? customPx : 14)); setEditingFont(true) },
-            }, t('display.custom'))))
+            }, t('display.custom'))),
+        h('button', {
+          type: 'button', className: 'er-glyph er-display-dict',
+          title: t('dict.title'), 'aria-label': t('dict.title'),
+          onClick: () => {
+            setQuery('')
+            setCardEntry(null)
+            setCardState('idle')
+            setCard({ word: '', x: 0, y: 0, pinned: true })
+          },
+        }, glyph(ICON.book, 16)))
 
-      const body = view === 'library' ? library
+      const body = view === 'words' ? wordsPage
+        : view === 'library' ? library
         : view === 'editor' ? editor
           : [list, errorBar, transport]
 
       return h('div', {
         className: 'er-root', onKeyDown, tabIndex: 0, ref: rootRef,
+        onMouseDown: (event) => { if (card !== null && card.pinned !== true && event.target === event.currentTarget) setCard(null) },
         style: { '--er-scale': String(effectiveScale) },
       },
         Styles(),
@@ -2661,6 +2913,7 @@ window.__ModuleLoader__.load({
         body,
         settingsCard,
         addDialog,
+        wordCard,
         h('audio', { ref: audioRef }))
     }
 
@@ -2723,6 +2976,26 @@ window.__ModuleLoader__.load({
 .er-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
 .er-line{display:block;font-size:calc((var(--dsh-content-font-size-secondary,13px) + 1px) * var(--er-scale,1));line-height:1.62;overflow-wrap:anywhere}
 .er-dim .er-line{color:var(--dsw-alias-label-secondary,#666)}
+/* Only the sentence being read exposes words, so this box marks what is clickable. */
+.er-passage-on .er-w{cursor:help;transition:background .12s ease,box-shadow .12s ease}
+.er-passage-on .er-w:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 7%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 26%,transparent)}
+.er-wordcard{position:absolute;z-index:45;width:260px;max-height:70%;overflow:auto;display:flex;flex-direction:column;gap:8px;padding:10px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .12s ease-out}
+.er-wordcard-pin{width:280px}
+.er-wordcard-head{display:flex;align-items:center;gap:6px}
+.er-wordcard-head .er-input{flex:1;min-width:0;height:26px}
+.er-wordcard-word{flex:1;min-width:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) + 2px);font-weight:600;color:var(--dsw-alias-label-primary,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.er-wordcard-note{margin:2px 0 6px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#888)}
+.er-wordcard-body{display:flex;flex-direction:column;gap:7px}
+.er-wordcard-ph{font-family:Georgia,serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-secondary,#888)}
+.er-sense{display:flex;flex-direction:column;gap:2px}
+.er-sense-line{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-primary,#111);line-height:1.45}
+.er-sense-pos{margin-right:5px;font-style:italic;color:var(--dsw-alias-label-secondary,#888)}
+.er-sense-eg{padding-left:8px;border-left:2px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6));font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#888);line-height:1.4}
+.er-wordcard-tr{padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,'Songti SC',serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-secondary,#666)}
+.er-wordcard-foot{display:flex;justify-content:flex-end;margin-top:2px}
+.er-display-dict{margin-left:auto}
+.er-words{display:flex;flex-direction:column;gap:6px}
+.er-words-bar{padding:0 0 4px}
 /* The current sentence is the only one at full strength; translation follows it. */
 .er-passage-on .er-trans{color:var(--dsw-alias-label-primary,#111)}
 .er-w{border-radius:3px;padding:0.05em 0.1em;margin:-0.05em -0.1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}

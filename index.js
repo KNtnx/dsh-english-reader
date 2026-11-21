@@ -43,6 +43,7 @@ const PATHS = {
   validate: '/api-dsh-english-reader/tts/validate',
   models: '/api-dsh-english-reader/tts/models',
   voices: '/api-dsh-english-reader/tts/voices',
+  dict: '/api-dsh-english-reader/dict',
   translate: '/api-dsh-english-reader/translate',
   translateOptions: '/api-dsh-english-reader/translate/options',
   translateModels: '/api-dsh-english-reader/translate/models',
@@ -115,6 +116,83 @@ async function readSources() {
 async function writeSources(list) {
   await mkdir(dirname(sourcesFile()), { recursive: true });
   await writeFile(sourcesFile(), JSON.stringify(list, null, 2), { mode: 0o600 });
+}
+
+/** Definitions already fetched, so a second look at a word is free. */
+const dictionaryCache = new Map();
+const DICTIONARY_LIMIT = 200;
+
+/** Trim a word down to what a dictionary accepts: no quotes, punctuation or possessive. */
+function dictKey(raw) {
+  return String(raw)
+    .toLowerCase()
+    .replace(/[’']s$/, '')
+    .replace(/^[^a-z]+|[^a-z]+$/g, '')
+    .trim();
+}
+
+/**
+ * Fetch one word from Wiktionary.
+ *
+ * A miss is normal: this endpoint only knows single English words, so phrases
+ * fall through to the translation source on the panel side.
+ * @param {string} word - the normalized word.
+ * @returns {Promise<object|null>} the entry, or null when it is unknown.
+ */
+async function lookUpWord(word) {
+  if (dictionaryCache.has(word)) return dictionaryCache.get(word);
+  let payload;
+  try {
+    const response = await fetch(`https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`, {
+      headers: { accept: 'application/json' },
+      signal: AbortSignal.timeout(9000),
+    });
+    if (!response.ok) return null;
+    payload = await response.json();
+  } catch {
+    return null;
+  }
+  const groups = Array.isArray(payload?.en) ? payload.en : [];
+  const senses = [];
+  for (const group of groups) {
+    for (const definition of group.definitions ?? []) {
+      if (senses.length >= 6) break;
+      const text = plainText(definition.definition);
+      if (text === '') continue;
+      senses.push({
+        pos: plainText(group.partOfSpeech ?? ''),
+        def: text.length > 260 ? `${text.slice(0, 257)}…` : text,
+        example: plainText(Array.isArray(definition.examples) ? definition.examples[0] : ''),
+      });
+    }
+    if (senses.length >= 6) break;
+  }
+  if (senses.length === 0) return null;
+  const entry = { word, phonetic: '', senses, source: 'wiktionary' };
+  dictionaryCache.set(word, entry);
+  if (dictionaryCache.size > DICTIONARY_LIMIT) {
+    const oldest = dictionaryCache.keys().next();
+    if (!oldest.done) dictionaryCache.delete(oldest.value);
+  }
+  return entry;
+}
+
+/** Wiktionary definitions arrive as HTML; the card wants plain sentences. */
+function plainText(html) {
+  return String(html ?? '')
+    // Drop style and reference blocks with their contents, not just their tags.
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<sup[^>]*>[\s\S]*?<\/sup>/gi, '')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/\s*\.[a-z-]+\{[^}]*\}/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Endpoints that answered, keyed by the address the user typed. */
@@ -1168,6 +1246,23 @@ export function apply(ctx, config) {
       }
     },
   }), 'english-reader: endpoint models route');
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: PATHS.dict,
+    /** One word's entry; the panel falls back to translation on a miss. */
+    resource: async (request) => {
+      const url = new URL(request.url ?? '/', 'http://localhost');
+      const word = dictKey(url.searchParams.get('word') ?? '');
+      if (word === '') return Response.json({ ok: false, code: 'badWord' }, { status: 400 });
+      if (!/^[a-z][a-z' -]{0,48}$/.test(word)) return Response.json({ ok: false, code: 'badWord' }, { status: 400 });
+      const entry = await lookUpWord(word);
+      if (entry === null) {
+        return Response.json({ ok: false, code: 'notFound' }, { headers: { 'cache-control': 'no-store' } });
+      }
+      return Response.json({ ok: true, entry }, { headers: { 'cache-control': 'no-store' } });
+    },
+  }), 'english-reader: dictionary route');
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

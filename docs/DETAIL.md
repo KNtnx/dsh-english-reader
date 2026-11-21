@@ -175,3 +175,27 @@ instant, and the next three sentences are synthesized ahead of the one playing.
   download once.
 - **No audio is saved to disk.** Cached clips are in memory only and disappear when the
   host process restarts.
+
+## Continuous playback
+
+A switch right of the loop control decides what happens when a sentence ends. With it off, playback stops there and the position is kept; pressing play resumes from the same sentence.
+
+## Word definitions
+
+- **Only the sentence being read is interactive**: that row is split into word spans, so a long article never pays for per-word nodes.
+- **Hover** draws a faint outline, the affordance for a right-click.
+- **Right-click** opens a card with part of speech, English definitions and examples.
+- **Chinese** is fetched as a follow-up translation and shown as one line at the bottom; phrases with no entry go straight to the translation source.
+
+Entries come from **Wiktionary**'s public REST API (no key). The host caches the last 200 lookups and never stores a query history.
+
+## Saved words
+
+- The card's **Save word** button stores the entry together with the sentence it came from.
+- The bookmark button beside the library opens the saved-words page: filter, reopen, remove.
+- Deduplicated by normalized lowercase word; capped at 500, oldest dropped first.
+- Kept in browser `localStorage`, never uploaded.
+
+## Dictionary entry
+
+The book button at the far right of the display bar opens a pinned lookup card: type a word or phrase and press Enter. It stays open until closed, so reading continues underneath.
