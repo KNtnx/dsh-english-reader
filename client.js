@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
         'words.lookup': 'Open in the dictionary',
         'words.context': 'From',
         'words.noContext': 'not from a sentence',
-        'back': 'Back',
+        'backRow': 'Back to the previous page',
         'display.width.narrow': 'Narrow',
         'display.width.mid': 'Medium',
         'display.width.wide': 'Wide',
@@ -322,7 +322,7 @@ window.__ModuleLoader__.load({
         'words.lookup': '在字典中打开',
         'words.context': '原文',
         'words.noContext': '无',
-        'back': '返回',
+        'backRow': '返回上一页面',
         'display.width.narrow': '窄',
         'display.width.mid': '中',
         'display.width.wide': '宽',
@@ -2203,15 +2203,19 @@ window.__ModuleLoader__.load({
           ? ''
           : (doc.mode === 'dialogue' ? t('mode.dialogue') : t('mode.article'))
 
+      // On a sub-page the row under the title is the way back, not a label
+      // that repeats what the tab already says.
+      const headerNote = canGoBack
+        ? h('button', {
+          type: 'button', className: 'er-back-row',
+          onClick: () => goView(returnView.current),
+        }, glyph(ICON.back, 13), h('span', null, t('backRow')))
+        : headerMeta === '' ? null : h('div', { className: 'er-meta' }, headerMeta)
+
       const header = h('div', { className: 'er-head' },
         h('div', { className: 'er-head-text' },
-          h('div', { className: 'er-title' },
-            canGoBack ? h('button', {
-              type: 'button', className: 'er-glyph', title: t('back'), 'aria-label': t('back'),
-              onClick: () => goView(returnView.current),
-            }, glyph(ICON.back, 16)) : null,
-            headerTitle),
-          headerMeta === '' ? null : h('div', { className: 'er-meta' }, headerMeta)),
+          h('div', { className: 'er-title' }, headerTitle),
+          headerNote),
         view !== 'reader' ? null : h('button', {
           type: 'button',
           className: `er-glyph${showTranslation ? ' er-glyph-on' : ''}`,
@@ -2226,8 +2230,11 @@ window.__ModuleLoader__.load({
           onClick: editActive,
         }, glyph(ICON.edit, 16)),
         view === 'editor' ? null : h('button', {
-          type: 'button', className: 'er-glyph', title: t('header.library'), 'aria-label': t('header.library'),
-          onClick: () => goView('library'),
+          type: 'button',
+          className: `er-glyph${view === 'library' ? ' er-glyph-on' : ''}`,
+          title: t('header.library'), 'aria-label': t('header.library'),
+          'aria-pressed': view === 'library' ? 'true' : 'false',
+          onClick: () => goView(view === 'library' ? returnView.current : 'library'),
         }, glyph(ICON.library, 16)),
         h('button', {
           type: 'button', className: `er-glyph${view === 'words' ? ' er-glyph-on' : ''}`,
@@ -3088,6 +3095,8 @@ window.__ModuleLoader__.load({
 .er-head{display:flex;align-items:flex-start;gap:1px;padding:10px 8px 8px 12px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6))}
 .er-head-text{flex:1;min-width:0;padding:3px 6px 0 0}
 .er-title{font-size:calc(var(--dsh-content-font-size-secondary,13px) + 0.5px);font-weight:600;line-height:1.3;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.er-back-row{display:inline-flex;align-items:center;gap:3px;margin:1px 0 0 -3px;padding:1px 4px 1px 2px;border:0;border-radius:var(--dsw-radius-xs,5px);background:transparent;color:var(--dsw-alias-label-secondary,#888);font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);line-height:1.4;cursor:pointer;font-family:inherit}
+.er-back-row:hover{color:var(--dsw-alias-label-primary,#111);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}
 .er-meta{margin-top:2px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);line-height:1.4;color:var(--dsw-alias-label-secondary,#666)}
 .er-glyph{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;padding:0;border:0;border-radius:var(--dsw-radius-xs,5px);background:transparent;color:var(--dsw-alias-label-secondary,#666);cursor:pointer}
 .er-glyph:hover:not(:disabled){color:var(--dsw-alias-label-primary,#111);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}
