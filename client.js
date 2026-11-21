@@ -111,7 +111,7 @@ window.__ModuleLoader__.load({
         'words.lookup': 'Open in the dictionary',
         'words.context': 'From',
         'words.noContext': 'not from a sentence',
-        'backRow': 'Back to the previous page',
+        'backRow': 'Back to this dialogue',
         'display.width.narrow': 'Narrow',
         'display.width.mid': 'Medium',
         'display.width.wide': 'Wide',
@@ -322,7 +322,7 @@ window.__ModuleLoader__.load({
         'words.lookup': '在字典中打开',
         'words.context': '原文',
         'words.noContext': '无',
-        'backRow': '返回上一页面',
+        'backRow': '返回当前对话',
         'display.width.narrow': '窄',
         'display.width.mid': '中',
         'display.width.wide': '宽',
@@ -2207,7 +2207,7 @@ window.__ModuleLoader__.load({
       const headerNote = canGoBack
         ? h('button', {
           type: 'button', className: 'er-back-row',
-          onClick: () => goView(returnView.current),
+          onClick: () => goView('reader'),
         }, h('span', { className: 'er-back-arrow', 'aria-hidden': true }, '\u2190'), h('span', null, t('backRow')))
         : headerMeta === '' ? null : h('div', { className: 'er-meta' }, headerMeta)
 
