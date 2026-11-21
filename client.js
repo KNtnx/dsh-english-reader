@@ -109,6 +109,7 @@ window.__ModuleLoader__.load({
         'words.noGloss': 'No definition stored',
         'words.remove': 'Remove',
         'words.lookup': 'Open in the dictionary',
+        'words.context': 'From: ',
         'back': 'Back',
         'display.width.narrow': 'Narrow',
         'display.width.mid': 'Medium',
@@ -318,6 +319,7 @@ window.__ModuleLoader__.load({
         'words.noGloss': '未保存释义',
         'words.remove': '移除',
         'words.lookup': '在字典中打开',
+        'words.context': '原文：',
         'back': '返回',
         'display.width.narrow': '窄',
         'display.width.mid': '中',
@@ -749,6 +751,17 @@ window.__ModuleLoader__.load({
       return SPEEDS.includes(value) ? value : 1
     }
 
+    /** Senses are a list now; the first release stored a plain string. */
+    function sensesOf(value) {
+      if (Array.isArray(value)) {
+        return value
+          .filter((sense) => sense !== null && typeof sense === 'object')
+          .map((sense) => ({ pos: String(sense.pos ?? ''), def: String(sense.def ?? '') }))
+      }
+      if (typeof value === 'string' && value.trim() !== '') return [{ pos: '', def: value }]
+      return []
+    }
+
     /** A stable id without depending on crypto availability. */
     function makeId() {
       return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
@@ -857,7 +870,23 @@ window.__ModuleLoader__.load({
      * follows the audio.
      * @param {{localeSource: object}} props - the observable locale projection.
      */
+    /**
+     * The panel is the last thing between a render mistake and a blank tab:
+     * a thrown error unmounts the tree with nothing to show for it, so the
+     * failure is caught here and printed instead.
+     */
     function Reader(props) {
+      try {
+        return ReaderBody(props)
+      } catch (error) {
+        const text = String(error?.stack ?? error?.message ?? error)
+        return h('div', { className: 'er-fatal' },
+          h('p', { className: 'er-fatal-title' }, 'English reader failed to render'),
+          h('pre', { className: 'er-fatal-body' }, text.slice(0, 1200)))
+      }
+    }
+
+    function ReaderBody(props) {
       const { pickDirectory } = props
       const localeId = useSnapshot(props.localeSource.subscribe, props.localeSource.getSnapshot)
       const dict = DICT[String(localeId).toLowerCase().startsWith('zh') ? 'zh' : 'en']
@@ -948,7 +977,14 @@ window.__ModuleLoader__.load({
       const [cardState, setCardState] = useState('idle')
       const [cardError, setCardError] = useState('')
       const [query, setQuery] = useState('')
-      const [words, setWords] = useState(() => (Array.isArray(initial.words) ? initial.words : []))
+      const [words, setWords] = useState(() => (Array.isArray(initial.words) ? initial.words : [])
+        .filter((item) => item !== null && typeof item === 'object' && typeof item.word === 'string')
+        .map((item) => ({
+          ...item,
+          id: String(item.id ?? item.word).toLowerCase(),
+          senses: sensesOf(item.senses),
+          translation: sensesOf(item.translation),
+        })))
       const [wordFilter, setWordFilter] = useState('')
       const [openWordId, setOpenWordId] = useState('')
       /** What a lookup shows: English definitions, a Chinese gloss, or both. */
@@ -1871,6 +1907,8 @@ window.__ModuleLoader__.load({
         ? (panelWidth * customPct) / 100
         : (columnWidth === 0 ? DEFAULT_WIDTH : columnWidth)
       const columnActual = Math.min(Math.max(200, preferredWidth), Math.max(200, panelWidth - 16))
+      /** The reading measure, shared by the reader and both list pages. */
+      const pageBox = { width: `${Math.round(columnActual)}px`, maxWidth: '100%', margin: '0 auto' }
       // The reading text is 14px at scale 1, so a typed size converts by division.
       const effectiveScale = customPx > 0 ? customPx / 14 : fontScale
 
@@ -2203,7 +2241,7 @@ window.__ModuleLoader__.load({
           glyph(ICON.caret, 13)))
 
       // --------------------------------------------------------------- library
-      const library = h('div', { className: 'er-scroll er-index-wrap' },
+      const library = h('div', { className: 'er-scroll er-index-wrap', style: pageBox },
         items.length === 0
           ? h('p', { className: 'er-empty' }, t('library.empty'))
           : h('ul', { className: 'er-index' }, [...items]
@@ -2255,9 +2293,9 @@ window.__ModuleLoader__.load({
       const visibleWords = words.filter((item) => {
         const needle = wordFilter.trim().toLowerCase()
         if (needle === '') return true
-        const zh = (item.translation ?? []).map((sense) => sense.def).join(' ')
+        const zh = sensesOf(item.translation).map((sense) => sense.def).join(' ')
         return String(item.word).toLowerCase().includes(needle)
-          || (item.senses ?? []).some((sense) => String(sense.def).toLowerCase().includes(needle))
+          || sensesOf(item.senses).some((sense) => sense.def.toLowerCase().includes(needle))
           || zh.toLowerCase().includes(needle)
       })
 
@@ -2265,7 +2303,7 @@ window.__ModuleLoader__.load({
       const toggleWord = (item) => {
         if (openWordId === item.id) { setOpenWordId(''); return }
         setOpenWordId(item.id)
-        const empty = (item.senses ?? []).length === 0 && (item.translation ?? []).length === 0
+        const empty = sensesOf(item.senses).length === 0 && sensesOf(item.translation).length === 0
         if (!empty) return
         void lookUp(item.word).then((found) => {
           if (found === undefined) return
@@ -2275,7 +2313,7 @@ window.__ModuleLoader__.load({
         })
       }
 
-      const wordsPage = h('div', { className: 'er-scroll er-words' },
+      const wordsPage = h('div', { className: 'er-scroll er-words', style: pageBox },
         h('div', { className: 'er-words-bar' },
           h('input', {
             className: 'er-input', value: wordFilter, spellCheck: false,
@@ -2288,8 +2326,8 @@ window.__ModuleLoader__.load({
             ? h('p', { className: 'er-empty' }, t('words.none'))
             : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
               const open = openWordId === item.id
-              const chinese = (item.translation ?? []).filter((sense) => sense.def !== '')
-              const english = (item.senses ?? []).filter((sense) => sense.def !== '')
+              const chinese = dictKind === 'en' ? [] : sensesOf(item.translation).filter((sense) => sense.def !== '')
+              const english = dictKind === 'zh' ? [] : sensesOf(item.senses).filter((sense) => sense.def !== '')
               return h('li', { key: item.id, className: `er-wrow${open ? ' er-wrow-on' : ''}` },
                 h('div', { className: 'er-wrow-head' },
                   h('button', {
@@ -2331,7 +2369,7 @@ window.__ModuleLoader__.load({
                       : null,
                     item.context === undefined || item.context === ''
                       ? null
-                      : h('p', { className: 'er-wrow-ctx' }, item.context))
+                      : h('p', { className: 'er-wrow-ctx' }, `${t('words.context')}${item.context}`))
                   : null)
             })))
 
@@ -3065,6 +3103,9 @@ window.__ModuleLoader__.load({
 /* ---- the reading surface: the one bold move -------------------------- */
 .er-read{padding:2px 0 8px}
 /* The sidebar is already narrow; a full-width view needs a readable measure. */
+.er-fatal{display:flex;flex-direction:column;gap:8px;padding:16px;overflow:auto}
+.er-fatal-title{margin:0;font-weight:600;color:var(--dsw-alias-state-error-primary,#c0392b)}
+.er-fatal-body{margin:0;font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--dsw-alias-label-secondary,#666)}
 .er-panel-icon{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px}
 .er-display{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
 /* Compact segmented control: the panel's own control shape, at reading-bar scale. */
@@ -3075,7 +3116,7 @@ window.__ModuleLoader__.load({
 .er-custom-input{width:64px;height:24px;padding:0 6px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px)}
 .er-custom-unit{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 3px);color:var(--dsw-alias-label-secondary,#888)}
 .er-body-wrap{position:relative;flex:1;min-height:0;display:flex;flex-direction:column}
-.er-column{position:relative;width:100%;margin:0 auto;flex:0 0 auto}
+.er-column{position:relative;margin:0 auto;flex:0 0 auto}
 .er-passage{display:flex;gap:9px;width:100%;padding:5px 12px 5px 10px;border:0;border-left:2px solid transparent;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .er-passage:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .er-passage-on{border-left-color:var(--dsw-alias-brand-primary,#4b7bec);background:color-mix(in srgb, var(--dsw-alias-brand-primary,#4b7bec) 5%, transparent)}
@@ -3111,6 +3152,8 @@ window.__ModuleLoader__.load({
 .er-wrow-head{display:flex;align-items:center;gap:2px}
 .er-wrow-head .er-entry-open{flex:1;min-width:0}
 .er-wrow-body{display:flex;flex-direction:column;gap:6px;padding:2px 12px 10px 12px;animation:er-pop .12s ease-out}
+.er-wrow-head .er-entry-title{font-size:calc((var(--dsh-content-font-size-secondary,13px) + 1px) * var(--er-scale,1))}
+.er-wrow-head .er-entry-meta{font-size:calc((var(--dsh-content-font-size-secondary,13px) - 2px) * var(--er-scale,1))}
 .er-wrow-zh{font-family:Georgia,'Songti SC',serif;font-size:calc((var(--dsh-content-font-size-secondary,13px) - 0.5px) * var(--er-scale,1));color:var(--dsw-alias-label-primary,#111);line-height:1.5}
 .er-wrow-en{display:flex;flex-direction:column;gap:5px}
 .er-wrow-ctx{padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#999);line-height:1.45}
@@ -3150,6 +3193,8 @@ window.__ModuleLoader__.load({
 
 /* ---- library ---------------------------------------------------------- */
 .er-index-wrap{padding-bottom:2px}
+.er-index .er-entry-title{font-size:calc((var(--dsh-content-font-size-secondary,13px) + 1px) * var(--er-scale,1))}
+.er-index .er-entry-meta{font-size:calc((var(--dsh-content-font-size-secondary,13px) - 2px) * var(--er-scale,1))}
 .er-index{list-style:none;margin:0;padding:0}
 .er-entry{display:flex;align-items:stretch;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));border-left:2px solid transparent}
 .er-entry-on{border-left-color:var(--dsw-alias-brand-primary,#4b7bec)}
