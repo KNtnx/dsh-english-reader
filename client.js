@@ -274,7 +274,6 @@ window.__ModuleLoader__.load({
         'start': 'Start reading',
         'save': 'Save and read',
         'cancel': 'Cancel',
-        'restart': 'Start over',
         'play': 'Play',
         'pause': 'Pause',
         'prev': 'Previous sentence',
@@ -504,7 +503,6 @@ window.__ModuleLoader__.load({
         'start': '开始朗读',
         'save': '保存并朗读',
         'cancel': '取消',
-        'restart': '从头开始',
         'play': '播放',
         'pause': '暂停',
         'prev': '上一句',
@@ -3113,13 +3111,7 @@ window.__ModuleLoader__.load({
                   ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
                   : modelChoices
                 ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))),
-              translateError === '' ? null : h('p', { className: 'er-fine er-fine-err' }, `${t('trans.failed')}: ${translateError.slice(0, 120)}`)),
-            h('div', { className: 'er-card-foot' },
-              h('button', {
-                type: 'button', className: 'er-cta er-cta-quiet',
-                disabled: total === 0,
-                onClick: () => { void playAt(0); setSettingsOpen(false) },
-              }, t('restart'))))),
+              translateError === '' ? null : h('p', { className: 'er-fine er-fine-err' }, `${t('trans.failed')}: ${translateError.slice(0, 120)}`)))),
       ] : null
 
       const addDialog = addOpen ? [
@@ -3656,15 +3648,13 @@ window.__ModuleLoader__.load({
 .er-add-plain{padding-left:0;padding-right:0;margin-left:0}
 .er-add-plain:hover{background:transparent;text-decoration:underline}
 .er-voice-acts{display:flex;gap:14px;align-items:center}
-.er-card{position:fixed;z-index:41;display:flex;flex-direction:column;max-height:min(72vh,560px);overflow:hidden;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .14s ease-out}
+.er-card{position:fixed;z-index:41;display:flex;flex-direction:column;max-height:min(78vh,640px);overflow:hidden;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .14s ease-out}
 @keyframes er-pop{from{opacity:0;transform:translateY(-3px)}}
 .er-card-head{display:flex;align-items:center;gap:8px;padding:9px 8px 9px 14px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
 .er-card-title{flex:1;margin:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) + 0.5px);font-weight:600}
 .er-card-hint{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2.5px);color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}
-.er-card-body{overflow-y:auto;overscroll-behavior:contain;padding-bottom:10px}
-.er-card-foot{position:sticky;bottom:0;background:var(--dsw-alias-bg-base,#fff);border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
+.er-card-body{overflow-y:auto;overscroll-behavior:contain;padding-bottom:14px}
 .er-card-body .er-sect:last-of-type{border-bottom:0}
-.er-card-foot{padding:8px 14px 14px}
 .er-facts{display:flex;flex-direction:column;margin-top:9px}
 .er-fact{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:3px 0;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:1.45}
 .er-fact-label{flex:0 0 auto;color:var(--dsw-alias-label-secondary,#666)}
