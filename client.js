@@ -114,6 +114,7 @@ window.__ModuleLoader__.load({
         'words.lookup': 'Open in the dictionary',
         'words.say': 'Read this word',
         'words.sayExample': 'Read the example',
+        'words.sayContext': 'Read the source sentence',
         'words.context': 'From',
         'words.noContext': 'none',
         'words.emptyEntry': 'The selected dictionary has no entry for this word.',
@@ -328,6 +329,7 @@ window.__ModuleLoader__.load({
         'words.lookup': '在字典中打开',
         'words.say': '朗读这个单词',
         'words.sayExample': '朗读例句',
+        'words.sayContext': '朗读原句',
         'words.context': '原文',
         'words.noContext': '无',
         'words.emptyEntry': '当前词典没有这个词条。',
@@ -2424,6 +2426,7 @@ window.__ModuleLoader__.load({
             ? h('p', { className: 'er-empty' }, t('words.none'))
             : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
               const open = openWordId === item.id
+              const hasContext = typeof item.context === 'string' && item.context.trim() !== ''
               const chinese = dictKind === 'en' ? [] : sensesOf(item.translation).filter((sense) => sense.def !== '')
               const english = dictKind === 'zh' ? [] : sensesOf(item.senses).filter((sense) => sense.def !== '')
               return h('li', { key: item.id, className: `er-wrow${open ? ' er-wrow-on' : ''}` },
@@ -2484,8 +2487,15 @@ window.__ModuleLoader__.load({
                       : null,
                     h('p', { className: 'er-wrow-ctx' },
                         h('span', { className: 'er-wrow-ctx-label' }, t('words.context')),
-                        h('span', { className: 'er-wrow-ctx-text' }, item.context === '' || item.context === undefined
-                          ? t('words.noContext') : item.context)))
+                        h('span', { className: 'er-wrow-ctx-text' }, hasContext
+                          ? item.context : t('words.noContext')),
+                        h('button', {
+                          type: 'button',
+                          className: `er-say er-say-ctx${sayingKey === `s:${item.id}` ? ' er-say-on' : ''}`,
+                          title: t('words.sayContext'), 'aria-label': t('words.sayContext'),
+                          disabled: !hasContext,
+                          onClick: () => { void speak(item.context, `s:${item.id}`) },
+                        }, glyph(ICON.speaker, 12))))
                   : null)
             })))
 
@@ -3271,6 +3281,8 @@ window.__ModuleLoader__.load({
 .er-say{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;padding:0;border:0;border-radius:var(--dsw-radius-xs,4px);background:transparent;color:var(--dsw-alias-label-secondary,#aaa);cursor:pointer;vertical-align:middle}
 .er-say:hover{color:var(--dsw-alias-brand-primary,#4b7bec);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .er-say-on{color:var(--dsw-alias-brand-primary,#4b7bec)}
+.er-say:disabled{opacity:.3;cursor:default;background:transparent;color:var(--dsw-alias-label-secondary,#aaa)}
+.er-say-ctx{margin-left:2px}
 .er-sense-eg{display:flex;align-items:baseline;gap:2px;padding-left:8px;border-left:2px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6));font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#888);line-height:1.4}
 .er-wordcard-trline{display:flex;align-items:baseline;gap:4px;line-height:1.5}
 .er-wordcard-tr{padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,'Songti SC',serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-secondary,#666)}
