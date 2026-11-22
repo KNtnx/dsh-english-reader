@@ -112,6 +112,8 @@ window.__ModuleLoader__.load({
         'words.noGloss': 'No definition stored',
         'words.remove': 'Remove',
         'words.lookup': 'Open in the dictionary',
+        'words.say': 'Read this word',
+        'words.sayExample': 'Read the example',
         'words.context': 'From',
         'words.noContext': 'none',
         'backRow': 'Back to this dialogue',
@@ -323,6 +325,8 @@ window.__ModuleLoader__.load({
         'words.noGloss': '未保存释义',
         'words.remove': '移除',
         'words.lookup': '在字典中打开',
+        'words.say': '朗读这个单词',
+        'words.sayExample': '朗读例句',
         'words.context': '原文',
         'words.noContext': '无',
         'backRow': '返回当前对话',
@@ -849,6 +853,7 @@ window.__ModuleLoader__.load({
         'm8 13 4-7 4 7',
         'M9.1 11h5.7',
       ],
+      speaker: 'M4 9h3l4-4v14l-4-4H4zm12.5-1.5a6 6 0 0 1 0 9l-1.4-1.4a4 4 0 0 0 0-6.2zM14 4.6a10 10 0 0 1 0 14.8l-1.4-1.4a8 8 0 0 0 0-12z',
       repeat: 'M7 7h8V4l4 4-4 4V9H9v4H7zm10 10H9v3l-4-4 4-4v3h6v-4h2z',
       edit: 'M4 17.2V20h2.8L17 9.8 14.2 7 4 17.2zM19.7 7.3a1 1 0 0 0 0-1.4l-1.6-1.6a1 1 0 0 0-1.4 0l-1.2 1.2 3 3z',
       rename: 'M5 8h9v2H5zm0 5h6v2H5zM16.5 15.6l1.4-1.4 1.9 1.9-1.4 1.4zM14 17.1l2.3 2.3-2.9.6z',
@@ -1036,6 +1041,8 @@ window.__ModuleLoader__.load({
       const stateRef = useRef({ index: 0, sentences: [], voiceA: '', voiceB: '', provider: 'edge', rate: 1, loop: false, autoNext: true, status: 'idle' })
       /** Rendered word spans of the sentence on screen, and which one is lit. */
       const wordRefs = useRef([])
+      const sayRef = useRef(null)
+      const [sayingKey, setSayingKey] = useState('')
       const activeWordRef = useRef(-1)
       /** Marks and resolved start times for the clip currently loaded. */
       const timingRef = useRef(null)
@@ -1263,6 +1270,41 @@ window.__ModuleLoader__.load({
         const live = stateRef.current
         return sentence !== undefined && sentence.slot === 1 ? live.voiceB : live.voiceA
       }, [])
+
+      /** Read any text out loud in the A voice, without touching the reader. */
+      const speak = useCallback(async (text, key) => {
+        const live = stateRef.current
+        const clean = String(text ?? '').trim()
+        if (clean === '' || typeof Audio !== 'function') return
+        try {
+          if (sayRef.current !== null) {
+            sayRef.current.pause()
+            sayRef.current = null
+          }
+          if (sayingKey === key) { setSayingKey(''); return }
+          const query = live.provider === 'custom'
+            ? `provider=custom&voice=${encodeURIComponent(live.voiceA)}`
+              + `&sourceId=${encodeURIComponent(live.sourceId)}&text=${encodeURIComponent(clean)}`
+            : live.provider === 'local'
+              ? `provider=local&voice=${encodeURIComponent(live.voiceA)}`
+                + `${live.modelPath === '' ? '' : `&modelPath=${encodeURIComponent(live.modelPath)}`}`
+                + `&text=${encodeURIComponent(clean)}`
+              : `provider=edge&voice=${encodeURIComponent(live.voiceA)}&text=${encodeURIComponent(clean)}`
+          setSayingKey(key)
+          const response = await fetch(`${TTS_PATH}?${query}`)
+          if (!response.ok) { setSayingKey(''); return }
+          const blob = await response.blob()
+          const url = URL.createObjectURL(blob)
+          const audio = new Audio(url)
+          audio.playbackRate = live.rate
+          audio.onended = () => { setSayingKey(''); URL.revokeObjectURL(url) }
+          audio.onerror = () => { setSayingKey(''); URL.revokeObjectURL(url) }
+          sayRef.current = audio
+          void audio.play()
+        } catch {
+          setSayingKey('')
+        }
+      }, [sayingKey])
 
       /** Fetch (or reuse) the clip for one sentence. */
       const clipFor = useCallback(async (sentence) => {
@@ -2385,6 +2427,12 @@ window.__ModuleLoader__.load({
                         ? chinese.map((sense) => `${sense.pos === '' ? '' : `${sense.pos} `}${sense.def}`).join('；')
                         : (english[0]?.def ?? t('words.noGloss')))),
                   h('button', {
+                    type: 'button',
+                    className: `er-entry-act${sayingKey === `w:${item.id}` ? ' er-entry-act-on' : ''}`,
+                    title: t('words.say'), 'aria-label': t('words.say'),
+                    onClick: () => { void speak(item.word, `w:${item.id}`) },
+                  }, glyph(ICON.speaker, 13)),
+                  h('button', {
                     type: 'button', className: 'er-entry-act',
                     title: t('words.lookup'), 'aria-label': t('words.lookup'),
                     onClick: () => { setOpenWordId(''); openPinnedWord(item.word) },
@@ -2410,7 +2458,16 @@ window.__ModuleLoader__.load({
                         h('div', { className: 'er-sense-line' },
                           sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
                           h('span', null, sense.def)),
-                        sense.example === '' ? null : h('div', { className: 'er-sense-eg' }, sense.example))))
+                        sense.example === ''
+                          ? null
+                          : h('div', { className: 'er-sense-eg' },
+                            h('span', null, sense.example),
+                            h('button', {
+                              type: 'button',
+                              className: `er-say${sayingKey === `e:${item.id}:${at}` ? ' er-say-on' : ''}`,
+                              title: t('words.sayExample'), 'aria-label': t('words.sayExample'),
+                              onClick: () => { void speak(sense.example, `e:${item.id}:${at}`) },
+                            }, glyph(ICON.speaker, 12))))))
                       : null,
                     h('p', { className: 'er-wrow-ctx' },
                         h('span', { className: 'er-wrow-ctx-label' }, t('words.context')),
@@ -2984,7 +3041,16 @@ window.__ModuleLoader__.load({
                     h('div', { className: 'er-sense-line' },
                       sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
                       h('span', null, sense.def)),
-                    sense.example === '' ? null : h('div', { className: 'er-sense-eg' }, sense.example))),
+                    sense.example === ''
+                      ? null
+                      : h('div', { className: 'er-sense-eg' },
+                        h('span', null, sense.example),
+                        h('button', {
+                          type: 'button',
+                          className: `er-say${sayingKey === `c:${at}` ? ' er-say-on' : ''}`,
+                          title: t('words.sayExample'), 'aria-label': t('words.sayExample'),
+                          onClick: () => { void speak(sense.example, `c:${at}`) },
+                        }, glyph(ICON.speaker, 12))))),
                   Array.isArray(cardEntry.translation) && cardEntry.translation.length > 0
                     ? h('div', { className: 'er-wordcard-tr' }, cardEntry.translation.map((sense, at) => h('div', {
                       key: at, className: 'er-wordcard-trline',
@@ -3189,7 +3255,10 @@ window.__ModuleLoader__.load({
 .er-sense{display:flex;flex-direction:column;gap:2px}
 .er-sense-line{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-primary,#111);line-height:1.45}
 .er-sense-pos{margin-right:5px;font-style:italic;color:var(--dsw-alias-label-secondary,#888)}
-.er-sense-eg{padding-left:8px;border-left:2px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6));font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#888);line-height:1.4}
+.er-say{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;padding:0;border:0;border-radius:var(--dsw-radius-xs,4px);background:transparent;color:var(--dsw-alias-label-secondary,#aaa);cursor:pointer;vertical-align:middle}
+.er-say:hover{color:var(--dsw-alias-brand-primary,#4b7bec);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
+.er-say-on{color:var(--dsw-alias-brand-primary,#4b7bec)}
+.er-sense-eg{display:flex;align-items:baseline;gap:2px;padding-left:8px;border-left:2px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6));font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#888);line-height:1.4}
 .er-wordcard-trline{display:flex;align-items:baseline;gap:4px;line-height:1.5}
 .er-wordcard-tr{padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,'Songti SC',serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-secondary,#666)}
 .er-wordcard-foot{display:flex;justify-content:flex-end;margin-top:2px}
