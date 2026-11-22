@@ -1108,6 +1108,33 @@ window.__ModuleLoader__.load({
         setSettingsOpen(true)
       }, [])
 
+      /** Ask the host whether it holds a Collins key; never carry the key here. */
+      const loadCollinsState = useCallback(async () => {
+        try {
+          const response = await fetch(DICT_KEY, { cache: 'no-store' })
+          if (!response.ok) return
+          const payload = await response.json();
+          setCollinsReady(payload.hasKey === true);
+        } catch { /* the settings simply show it as missing */ }
+      }, [])
+
+      /** Hand one key to the host and forget it here. */
+      const saveCollinsKey = useCallback(async () => {
+        const key = collinsDraft.trim();
+        if (key === '') return;
+        try {
+          const response = await fetch(DICT_KEY, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ key }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          setCollinsReady(payload.hasKey === true);
+          setCollinsSaved(true);
+          setCollinsDraft('');
+        } catch { /* the row keeps saying it is missing */ }
+      }, [collinsDraft])
+
       useEffect(() => { if (settingsOpen) void loadCollinsState() }, [settingsOpen, loadCollinsState])
 
       // The card belongs to the document on screen; leaving that document closes it.
@@ -2073,33 +2100,6 @@ window.__ModuleLoader__.load({
         window.addEventListener('pointermove', move)
         window.addEventListener('pointerup', stop)
       }, [panelWidth])
-
-      /** Ask the host whether it holds a Collins key; never carry the key here. */
-      const loadCollinsState = useCallback(async () => {
-        try {
-          const response = await fetch(DICT_KEY, { cache: 'no-store' })
-          if (!response.ok) return
-          const payload = await response.json();
-          setCollinsReady(payload.hasKey === true);
-        } catch { /* the settings simply show it as missing */ }
-      }, [])
-
-      /** Hand one key to the host and forget it here. */
-      const saveCollinsKey = useCallback(async () => {
-        const key = collinsDraft.trim();
-        if (key === '') return;
-        try {
-          const response = await fetch(DICT_KEY, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ key }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          setCollinsReady(payload.hasKey === true);
-          setCollinsSaved(true);
-          setCollinsDraft('');
-        } catch { /* the row keeps saying it is missing */ }
-      }, [collinsDraft])
 
       /** Fetch one word: one dictionary answers, translation only as a last resort. */
       const lookUp = useCallback(async (raw) => {
