@@ -111,11 +111,7 @@ The host rejects a folder that does not look like a model (`400 bad-model-path`)
 
 Keys never reach the browser: the API key comes from the plugin config (`ttsApiKey`) or `DSH_ENGLISH_READER_TTS_API_KEY`. Endpoints, models, folders and voices live in this browser's local storage. The same environment names set a default endpoint: `DSH_ENGLISH_READER_TTS_BASE_URL`, `_MODEL`, `_VOICE`, `_FORMAT`.
 
-The Microsoft and Tencent keys are read from the plugin row's `config`
-(`microsoftKey`, `microsoftRegion`, `tencentSecretId`, `tencentSecretKey`) or from the
-environment (`DSH_ENGLISH_READER_MICROSOFT_KEY`, `_MICROSOFT_REGION`,
-`_TENCENT_SECRET_ID`, `_TENCENT_SECRET_KEY`). They are read on the host and never reach
-the browser. The target language is `zh-CN` unless the `target` config field or
+Microsoft and Tencent read their keys from the plugin row's config, which the panel cannot write, so they are not offered as choices.
 `DSH_ENGLISH_READER_TARGET` says otherwise.
 
 ## The local model
@@ -164,9 +160,8 @@ instant, and the next three sentences are synthesized ahead of the one playing.
 - **One sentence per request, 800 characters at most.** A single paragraph with no
   punctuation can exceed that; the panel then reports that the sentence is too long to
   synthesize. Add punctuation to break it up.
-- **Only two sources work with no setup.** The Harness model and the keyless Google
-  endpoint. Microsoft and Tencent need a free account and a key; without one they show as
-  *not configured*.
+- **Only two sources are offered.** The Harness model and the keyless Google endpoint;
+  every other provider would need a key the panel cannot collect.
 - **The Google endpoint is unofficial.** It is the same service a browser uses, with no
   account and no quota agreement, so it can rate-limit, change, or stop working.
 - **The routes have no authentication.** Like other DSH plugin web routes, they answer any

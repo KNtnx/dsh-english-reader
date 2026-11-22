@@ -34,7 +34,7 @@ It handles both shapes: a hard-wrapped **article** is joined into sentences inst
 - **Two entry points**: a right-sidebar tab, or a full-width side panel (no composer in the way).
 - **Sentence playback with resume**: click any sentence to start there; progress is persisted.
 - **Word-level highlight**: Edge reports **real word timestamps**, so the current word tracks the audio. The local engine estimates.
-- **Sentence translation**: Harness models (pick provider, then model), Google, Microsoft, Tencent.
+- **Sentence translation**: any model you already configured in Harness (pick provider, then model), or keyless Google.
 - **Article vs dialogue**: hard wraps are joined, paragraphs split on blank lines, two voices only when two speakers are actually detected.
 - **Dialogue library**: keep many texts, rename, pin, delete; each row shows "sentence n of m".
 - **Loop and continuous playback**: looping one sentence and "continue to the next" are separate switches; turn the second off and playback stops on the sentence.
@@ -103,10 +103,8 @@ Lookups are limited to the sentence being read: every other sentence stays plain
 
 | Source | Needs | Notes |
 | --- | --- | --- |
-| Harness model | nothing | Pick any configured provider route, then a model it advertises |
-| Google | nothing | Keyless `translate.googleapis.com` |
-| Microsoft | key + region | Azure Translator v3 |
-| Tencent | SecretId / SecretKey | TMT `TextTranslateBatch`, TC3-HMAC-SHA256 |
+| Harness model | a configured provider and model | Reuses what Harness already has; the best quality of the two |
+| Google | nothing | Keyless `translate.googleapis.com`, works anywhere |
 
 ## Privacy
 
