@@ -810,6 +810,19 @@ window.__ModuleLoader__.load({
       return []
     }
 
+    /** One collapsible settings section: a header row and its body. */
+    function Section(props) {
+      return h('section', { className: 'er-sect' },
+        h('button', {
+          type: 'button', className: 'er-sect-toggle',
+          'aria-expanded': props.open ? 'true' : 'false',
+          onClick: props.onToggle,
+        },
+          h('span', { className: 'er-sect-title' }, props.title),
+          glyph(ICON.caret, 13)),
+        props.open ? h('div', { className: 'er-sect-body' }, props.children) : null)
+    }
+
     /** A stable id without depending on crypto availability. */
     function makeId() {
       return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
@@ -1084,6 +1097,21 @@ window.__ModuleLoader__.load({
       const [translating, setTranslating] = useState(false)
       const [translateError, setTranslateError] = useState('')
       const [settingsOpen, setSettingsOpen] = useState(false)
+      /** Which settings sections are expanded; the choice is remembered. */
+      const [sections, setSections] = useState(() => {
+        const stored = initial.sections;
+        const base = { engine: true, voice: false, dict: false, trans: false };
+        if (stored === null || typeof stored !== 'object') return base;
+        return {
+          engine: stored.engine !== false,
+          voice: stored.voice === true,
+          dict: stored.dict === true,
+          trans: stored.trans === true,
+        };
+      })
+      const toggleSection = useCallback((id) => {
+        setSections((current) => ({ ...current, [id]: current[id] !== true }))
+      }, [])
       const [sheetPlace, setSheetPlace] = useState(null)
       const [model, setModel] = useState(null)
       /** Where the bundled model sits on disk, shown as the source's location. */
@@ -1707,11 +1735,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn,
+            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -2925,8 +2953,7 @@ window.__ModuleLoader__.load({
               onClick: () => setSettingsOpen(false),
             }, glyph(ICON.close, 15))),
           h('div', { className: 'er-card-body' },
-            h('section', { className: 'er-sect' },
-              h('h3', { className: 'er-sect-title' }, t('settings.engine')),
+            h(Section, { title: t('settings.engine'), open: sections.engine === true, onToggle: () => toggleSection('engine') },
               h('ul', { className: 'er-sources', role: 'radiogroup', 'aria-label': t('source.label') }, sourceRows),
               h('button', {
                 type: 'button', className: 'er-add',
@@ -2937,8 +2964,7 @@ window.__ModuleLoader__.load({
                 factRow(provider === 'local' ? t('engine.folder') : t('engine.connection'), sourceLink),
                 factRow(t('engine.state'), sourceState)),
               provider === 'local' ? modelNote : null),
-            h('section', { className: 'er-sect' },
-              h('h3', { className: 'er-sect-title' }, t('settings.voices')),
+            h(Section, { title: t('settings.voices'), open: sections.voice === true, onToggle: () => toggleSection('voice') },
               activeSource.kind !== 'api' ? null : h('datalist', { id: 'er-voice-list' },
                 voiceChoices.map((entry) => h('option', { key: entry.id, value: entry.id },
                   entry.origin === undefined || entry.origin === 'catalog'
@@ -2980,8 +3006,7 @@ window.__ModuleLoader__.load({
               activeSource.kind !== 'api' || voicesListed || loadingVoices
                 ? null
                 : h('p', { className: 'er-fine' }, t('voice.manual'))),
-            h('section', { className: 'er-sect' },
-              h('h3', { className: 'er-sect-title' }, t('settings.dict')),
+            h(Section, { title: t('settings.dict'), open: sections.dict === true, onToggle: () => toggleSection('dict') },
               field(t('dict.show'), h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('dict.show') },
                 ['both', 'en', 'zh'].map((kind) => h('button', {
                   key: kind, type: 'button', role: 'radio',
@@ -3051,8 +3076,7 @@ window.__ModuleLoader__.load({
                   }, collinsSaved ? t('dict.saved') : t('dict.save')),
                   h('p', { className: 'er-fine' }, collinsReady ? t('dict.collinsOnHost') : t('dict.collinsMissing'))),
               h('p', { className: 'er-fine' }, t('dict.kindHint'))),
-            h('section', { className: 'er-sect' },
-              h('h3', { className: 'er-sect-title' }, t('trans.title')),
+            h(Section, { title: t('trans.title'), open: sections.trans === true, onToggle: () => toggleSection('trans') },
               h('button', {
                 type: 'button', className: 'er-toggle-row',
                 role: 'switch', 'aria-checked': showTranslation ? 'true' : 'false',
@@ -3637,14 +3661,22 @@ window.__ModuleLoader__.load({
 .er-card-head{display:flex;align-items:center;gap:8px;padding:9px 8px 9px 14px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
 .er-card-title{flex:1;margin:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) + 0.5px);font-weight:600}
 .er-card-hint{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2.5px);color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}
-.er-card-body{overflow-y:auto;overscroll-behavior:contain}
+.er-card-body{overflow-y:auto;overscroll-behavior:contain;padding-bottom:10px}
+.er-card-foot{position:sticky;bottom:0;background:var(--dsw-alias-bg-base,#fff);border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
 .er-card-body .er-sect:last-of-type{border-bottom:0}
-.er-card-foot{padding:2px 14px 14px}
+.er-card-foot{padding:8px 14px 14px}
 .er-facts{display:flex;flex-direction:column;margin-top:9px}
 .er-fact{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:3px 0;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:1.45}
 .er-fact-label{flex:0 0 auto;color:var(--dsw-alias-label-secondary,#666)}
 .er-fact-value{min-width:0;text-align:right;color:var(--dsw-alias-label-primary,#111);overflow-wrap:anywhere}
-.er-sect{padding:11px 14px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
+.er-sect{border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
+.er-sect-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:11px 14px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.er-sect-toggle:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.04))}
+.er-sect-toggle .er-sect-title{padding:0}
+.er-sect-toggle svg{color:var(--dsw-alias-label-secondary,#888);transition:transform .12s ease}
+.er-sect-toggle[aria-expanded='true'] svg{transform:rotate(180deg)}
+.er-sect-body{display:flex;flex-direction:column;gap:8px;padding:0 14px 12px}
+.er-sect-title{padding:11px 14px}
 .er-sect-title{margin:0 0 7px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);font-weight:600;color:var(--dsw-alias-label-secondary,#666)}
 
 .er-seg{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:2px;height:28px;padding:2px;border-radius:var(--dsw-radius-xs,6px);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06))}
