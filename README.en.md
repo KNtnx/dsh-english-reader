@@ -88,11 +88,19 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 
 | Dictionary | Source | Notes |
 | --- | --- | --- |
-| Chinese | iciba | Grouped by part of speech, **no key**; phrases work too |
-| English | WordNet (Datamuse), then Wiktionary | WordNet first, Wiktionary only when it has nothing |
-| Model | your configured DSH model | Collins-style full sentences, IPA, Chinese gloss and an example, generated **once per word** |
+Two independent settings: **Show** (both / English / Chinese) and **Dictionary**:
 
-The setting offers Both / English / Chinese only / Model. The model option writes complete-sentence definitions rather than synonym lists, caches every entry locally, and therefore never pays for the same word twice. Translation is only used when neither has an entry, which mostly means an unusual phrase. The host caches the last 200 lookups.
+| Source | Language | Needs | Notes |
+| --- | --- | --- | --- |
+| iciba | Chinese | nothing | Grouped by part of speech; phrases work too |
+| WordNet (Datamuse) | English | nothing | Full-sentence definitions with clear part-of-speech tags |
+| Wiktionary | English | nothing | Backup when WordNet has nothing |
+| Collins | English | **your own API key** | The official API; best quality, key goes in the settings |
+| Your model | both | your DSH model | Collins-style sentences, IPA, Chinese gloss and an example |
+
+Exactly one source answers a lookup.
+
+The model writes complete-sentence definitions rather than synonym lists, caches every entry locally, and therefore never pays for the same word twice. Translation is only used when neither has an entry, which mostly means an unusual phrase. The host caches the last 200 lookups.
 
 Lookups are limited to the sentence being read: every other sentence stays plain text, so a long article never pays for per-word nodes.
 

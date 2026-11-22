@@ -98,8 +98,16 @@ window.__ModuleLoader__.load({
         'dict.kind.both': 'Both',
         'dict.kind.en': 'English',
         'dict.kind.zh': 'Chinese only',
-        'dict.kind.ai': 'Model',
-        'dict.kindHint': 'Chinese comes from a 简明-style dictionary (iciba), English from WordNet and Wiktionary. Model writes the entry itself: the best reading of the four, using tokens once per word.',
+        'dict.lang': 'Show',
+        'dict.source': 'Dictionary',
+        'dict.src.iciba': 'iciba (Chinese, free)',
+        'dict.src.wordnet': 'WordNet (English, free)',
+        'dict.src.wiktionary': 'Wiktionary (English, free)',
+        'dict.src.collins': 'Collins (needs a key)',
+        'dict.src.model': 'Your model',
+        'dict.collinsKey': 'Collins key',
+        'dict.collinsKeyHint': 'Your own Collins API access key',
+        'dict.kindHint': 'One dictionary answers at a time. Collins needs your own API key; the model writes entries itself and pays once per word.',
         'dict.placeholder': 'Look up a word or phrase',
         'dict.loading': 'Looking it up…',
         'dict.missing': 'No entry found. Try the phrase in the box above.',
@@ -314,8 +322,16 @@ window.__ModuleLoader__.load({
         'dict.kind.both': '中英',
         'dict.kind.en': '英英',
         'dict.kind.zh': '仅中文',
-        'dict.kind.ai': '模型释义',
-        'dict.kindHint': '中文来自简明词典（iciba），英文来自 WordNet 与 Wiktionary。模型释义由 DSH 模型自己写，质量最好，但每个单词只生成一次——之后切换档位不再重复。',
+        'dict.lang': '显示',
+        'dict.source': '词典',
+        'dict.src.iciba': 'iciba（中英，免费）',
+        'dict.src.wordnet': 'WordNet（英英，免费）',
+        'dict.src.wiktionary': 'Wiktionary（英英，免费）',
+        'dict.src.collins': '柯林斯（需密钥）',
+        'dict.src.model': '使用模型',
+        'dict.collinsKey': '柯林斯密钥',
+        'dict.collinsKeyHint': '你自己的 Collins API access key',
+        'dict.kindHint': '一次只用一个词典。柯林斯需要你自己的 API 密钥；模型释义由 DSH 模型生成，每个单词只消耗一次额度。',
         'dict.placeholder': '查单词或词组',
         'dict.loading': '正在查询…',
         'dict.missing': '没查到，试试在上面的输入框里查词组。',
@@ -1019,7 +1035,13 @@ window.__ModuleLoader__.load({
       const [openWordId, setOpenWordId] = useState('')
       const [openLoading, setOpenLoading] = useState(false)
       /** What a lookup shows: English definitions, a Chinese gloss, or both. */
-      const [dictKind, setDictKind] = useState(() => (['both', 'en', 'zh', 'ai'].includes(initial.dictKind) ? initial.dictKind : 'both'))
+      /** Which languages a card shows. */
+      const [dictLang, setDictLang] = useState(() => (['both', 'en', 'zh'].includes(initial.dictLang) ? initial.dictLang
+        : (['both', 'en', 'zh'].includes(initial.dictKind) ? initial.dictKind : 'both')))
+      /** Who answers: exactly one dictionary, or the model. */
+      const [dictSource, setDictSource] = useState(() => (['iciba', 'wordnet', 'wiktionary', 'collins', 'model'].includes(initial.dictSource)
+        ? initial.dictSource : 'iciba'))
+      const [collinsKey, setCollinsKey] = useState(() => (typeof initial.collinsKey === 'string' ? initial.collinsKey : ''))
       /** Model-written entries, keyed by word, so a kind switch never pays twice. */
       const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
       const [renamingSource, setRenamingSource] = useState('')
@@ -1536,11 +1558,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictKind, aiEntries,
+            showTranslation, translateSource, translateModel, autoNext, words, dictLang, dictSource, collinsKey, aiEntries,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictKind, aiEntries])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictLang, dictSource, collinsKey, aiEntries])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -2047,48 +2069,64 @@ window.__ModuleLoader__.load({
         setCardState('loading');
         setCardError('');
         setCardEntry(null);
-        if (dictKind === 'ai') {
-          const key = word.toLowerCase();
-          const cached = aiEntries[key];
-          if (cached !== undefined) { setCardEntry(cached); setCardState('ready'); return cached; }
-          try {
-            const response = await fetch(DICT_AI, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ word, model: translateModel ?? undefined }),
-            });
-            const payload = await response.json().catch(() => ({}));
-            if (payload.ok !== true) throw new Error(payload.error ?? 'the model did not answer');
-            const built = {
-              word: payload.entry.word,
-              phonetic: payload.entry.phonetic,
-              senses: payload.entry.senses.map((sense) => ({ pos: sense.pos, def: sense.def, example: sense.example })),
-              translation: payload.entry.senses.filter((sense) => sense.zh !== '').map((sense) => ({ pos: sense.pos, def: sense.zh })),
-              source: 'model',
-            };
-            setAiEntries((current) => ({ ...current, [key]: built }));
-            setCardEntry(built);
-            setCardState('ready');
-            return built;
-          } catch (error) {
-            setCardState('failed');
-            setCardError(error instanceof Error ? error.message : t('dict.failed'));
-            return undefined;
-          }
-        }
-        const kinds = dictKind === 'en' ? 'en' : dictKind === 'zh' ? 'zh' : 'both';
-        let en = null;
-        let zh = null;
+        const wanted = dictLang === 'en' ? 'en' : dictLang === 'zh' ? 'zh' : 'both';
         try {
-          const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}&kinds=${kinds}`, { cache: 'no-store' });
-          const payload = await response.json().catch(() => ({ ok: false }));
-          if (payload.ok === true) { en = payload.en ?? null; zh = payload.zh ?? null; }
-        } catch { /* fall through to translation */ }
-        if (en !== null || zh !== null) {
-          const found = { word, phonetic: en?.phonetic ?? '', senses: en?.senses ?? [], translation: zh?.senses ?? [], source: 'dict' };
-          setCardEntry(found);
-          setCardState('ready');
-          return found;
+          let built = null;
+          if (dictSource === 'model') {
+            const key = `${word.toLowerCase()}|model`;
+            built = aiEntries[key];
+            if (built === undefined) {
+              const response = await fetch(DICT_AI, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ word, model: translateModel ?? undefined }),
+              });
+              const payload = await response.json().catch(() => ({}));
+              if (payload.ok !== true) throw new Error(payload.error ?? t('dict.failed'));
+              built = {
+                word: payload.entry.word,
+                phonetic: payload.entry.phonetic,
+                senses: payload.entry.senses.map((sense) => ({ pos: sense.pos, def: sense.def, example: sense.example })),
+                translation: payload.entry.senses.filter((sense) => sense.zh !== '').map((sense) => ({ pos: sense.pos, def: sense.zh })),
+                source: 'model',
+              };
+              setAiEntries((current) => ({ ...current, [key]: built }));
+            }
+          } else {
+            const key = `${word.toLowerCase()}|${dictSource}`;
+            built = aiEntries[key];
+            if (built === undefined) {
+              const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}&source=${dictSource}`, {
+                cache: 'no-store',
+                headers: dictSource === 'collins' && collinsKey !== '' ? { 'x-collins-key': collinsKey } : undefined,
+              });
+              const payload = await response.json().catch(() => ({ ok: false }));
+              if (payload.ok !== true) {
+                if (payload.code === 'notFound') { setCardState('missing'); return undefined; }
+                throw new Error(payload.error ?? t('dict.failed'));
+              }
+              built = {
+                word,
+                phonetic: payload.en?.phonetic ?? '',
+                senses: payload.en?.senses ?? [],
+                translation: payload.zh?.senses ?? [],
+                source: dictSource,
+              };
+              setAiEntries((current) => ({ ...current, [key]: built }));
+            }
+          }
+          const shown = {
+            ...built,
+            senses: wanted === 'zh' ? [] : built.senses,
+            translation: wanted === 'en' ? [] : built.translation,
+          };
+          setCardEntry(shown);
+          setCardState(shown.senses.length === 0 && shown.translation.length === 0 ? 'missing' : 'ready');
+          return shown;
+        } catch (error) {
+          setCardState('failed');
+          setCardError(error instanceof Error ? error.message : t('dict.failed'));
+          return undefined;
         }
         // No dictionary entry at all: a plain translation is still worth showing.
         try {
@@ -2115,7 +2153,7 @@ window.__ModuleLoader__.load({
           setCardState('failed');
           setCardError(t('dict.failed'));
         }
-      }, [translateSource, translateModel, translateOptions, dictKind, aiEntries, t])
+      }, [translateSource, translateModel, translateOptions, dictLang, dictSource, collinsKey, aiEntries, t])
 
       const openPinnedWord = useCallback((raw) => {
         const word = String(raw).trim();
@@ -2434,8 +2472,8 @@ window.__ModuleLoader__.load({
         if (openWordId === item.id) { setOpenWordId(''); setOpenLoading(false); return }
         setOpenWordId(item.id)
         // A kind switch can leave the stored entry without the senses it now needs.
-        const needsChinese = dictKind !== 'en' && sensesOf(item.translation).length === 0
-        const needsEnglish = dictKind !== 'zh' && sensesOf(item.senses).length === 0
+        const needsChinese = dictLang !== 'en' && sensesOf(item.translation).length === 0
+        const needsEnglish = dictLang !== 'zh' && sensesOf(item.senses).length === 0
         if (!needsChinese && !needsEnglish) return
         setOpenLoading(true)
         void lookUp(item.word).then((found) => {
@@ -2461,8 +2499,8 @@ window.__ModuleLoader__.load({
             : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
               const open = openWordId === item.id
               const hasContext = typeof item.context === 'string' && item.context.trim() !== ''
-              const chinese = dictKind === 'en' ? [] : sensesOf(item.translation).filter((sense) => sense.def !== '')
-              const english = dictKind === 'zh' ? [] : sensesOf(item.senses).filter((sense) => sense.def !== '')
+              const chinese = dictLang === 'en' ? [] : sensesOf(item.translation).filter((sense) => sense.def !== '')
+              const english = dictLang === 'zh' ? [] : sensesOf(item.senses).filter((sense) => sense.def !== '')
               return h('li', { key: item.id, className: `er-wrow${open ? ' er-wrow-on' : ''}` },
                 h('div', { className: 'er-wrow-head' },
                   h('button', {
@@ -2849,13 +2887,30 @@ window.__ModuleLoader__.load({
                 : h('p', { className: 'er-fine' }, t('voice.manual'))),
             h('section', { className: 'er-sect' },
               h('h3', { className: 'er-sect-title' }, t('settings.dict')),
-              h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('settings.dict') },
-                ['both', 'en', 'zh', 'ai'].map((kind) => h('button', {
+              field(t('dict.lang'), h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('dict.lang') },
+                ['both', 'en', 'zh'].map((kind) => h('button', {
                   key: kind, type: 'button', role: 'radio',
-                  'aria-checked': dictKind === kind ? 'true' : 'false',
+                  'aria-checked': dictLang === kind ? 'true' : 'false',
                   className: 'er-seg-btn',
-                  onClick: () => setDictKind(kind),
-                }, t(`dict.kind.${kind}`)))),
+                  onClick: () => setDictLang(kind),
+                }, t(`dict.kind.${kind}`))))),
+              field(t('dict.source'), h('select', {
+                className: 'er-select', value: dictSource,
+                onChange: (event) => setDictSource(event.target.value),
+              }, [
+                ['iciba', t('dict.src.iciba')],
+                ['wordnet', t('dict.src.wordnet')],
+                ['wiktionary', t('dict.src.wiktionary')],
+                ['collins', t('dict.src.collins')],
+                ['model', t('dict.src.model')],
+              ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
+              dictSource === 'collins'
+                ? field(t('dict.collinsKey'), h('input', {
+                  className: 'er-input', type: 'password', value: collinsKey, spellCheck: false,
+                  placeholder: t('dict.collinsKeyHint'),
+                  onChange: (event) => setCollinsKey(event.target.value),
+                }))
+                : null,
               h('p', { className: 'er-fine' }, t('dict.kindHint'))),
             h('section', { className: 'er-sect' },
               h('h3', { className: 'er-sect-title' }, t('trans.title')),

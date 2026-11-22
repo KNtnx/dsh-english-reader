@@ -193,6 +193,38 @@ async function defineWithModel(ctx, word, requested) {
   return entry;
 }
 
+/** Collins Dictionary API entry; the key is the user's own. */
+async function lookUpCollins(word, key) {
+  if (key === '') throw new Error('no Collins API key is configured');
+  try {
+    const response = await fetch(
+      `https://api.collinsdictionary.com/api/v1/dictionaries/english/entries/${encodeURIComponent(word)}`,
+      { headers: { accessKey: key, accept: 'application/json' }, signal: AbortSignal.timeout(12000) },
+    );
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const entries = payload?.entries ?? [];
+    const senses = [];
+    for (const entry of Array.isArray(entries) ? entries : []) {
+      for (const sense of entry.senses ?? []) {
+        const def = String(sense?.definition ?? '').replace(/\s+/g, ' ').trim();
+        if (def === '') continue;
+        senses.push({
+          pos: String(entry.pos ?? '').trim(),
+          def,
+          example: String((sense.examples ?? [])[0] ?? '').replace(/\s+/g, ' ').trim(),
+        });
+        if (senses.length >= 6) break;
+      }
+      if (senses.length >= 6) break;
+    }
+    if (senses.length === 0) return null;
+    return { word, phonetic: '', senses, source: 'collins' };
+  } catch {
+    return null;
+  }
+}
+
 /** Entries the model produced, kept so a word is only paid for once. */
 const modelEntries = new Map();
 
@@ -1436,16 +1468,27 @@ export function apply(ctx, config) {
       const word = dictKey(url.searchParams.get('word') ?? '');
       if (word === '') return Response.json({ ok: false, code: 'badWord' }, { status: 400 });
       if (!/^[a-z][a-z' -]{0,48}$/.test(word)) return Response.json({ ok: false, code: 'badWord' }, { status: 400 });
-      const kinds = String(url.searchParams.get('kinds') ?? 'both');
-      // "en" is Wiktionary, "zh" is the Chinese 简明-style entry; ask only for what is wanted.
-      const [en, zh] = await Promise.all([
-        kinds === 'zh' ? null : (await lookUpWordNet(word)) ?? (await lookUpWord(word)),
-        kinds === 'en' ? null : lookUpChinese(word),
-      ]);
+      // Exactly one source answers: no chaining, so a slow or missing dictionary
+      // never hides behind another one.
+      const source = String(url.searchParams.get('source') ?? 'iciba');
+      const collinsKey = String(request.headers?.get?.('x-collins-key') ?? '');
+      let en = null;
+      let zh = null;
+      let failure = '';
+      try {
+        if (source === 'iciba') zh = await lookUpChinese(word);
+        else if (source === 'wordnet') en = await lookUpWordNet(word);
+        else if (source === 'wiktionary') en = await lookUpWord(word);
+        else if (source === 'collins') en = await lookUpCollins(word, collinsKey);
+        else return Response.json({ ok: false, code: 'badSource' }, { status: 400 });
+      } catch (error) {
+        failure = error instanceof Error ? error.message : String(error);
+      }
+      if (failure !== '') return Response.json({ ok: false, code: 'failed', error: failure }, { headers: { 'cache-control': 'no-store' } });
       if (en === null && zh === null) {
         return Response.json({ ok: false, code: 'notFound' }, { headers: { 'cache-control': 'no-store' } });
       }
-      return Response.json({ ok: true, en, zh }, { headers: { 'cache-control': 'no-store' } });
+      return Response.json({ ok: true, source, en, zh }, { headers: { 'cache-control': 'no-store' } });
     },
   }), 'english-reader: dictionary route');
 
