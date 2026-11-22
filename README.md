@@ -82,7 +82,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 **为什么协议是必选项**：同一家服务的不同接口路径和请求体完全不同。阿里云百炼的 OpenAI 兼容前缀只支持对话与向量，语音合成走原生的 `api/v1/services/audio/tts/SpeechSynthesizer`，返回的还是音频下载地址。协议决定发什么请求。
 
-**密钥不出宿主**：面板只能读到 `hasKey: true`，读不到明文。来源记录存在 `$DSH_HOME/dsh-english-reader/sources.json`（权限 `0600`），测试连接、拉模型列表、拉音色列表都由宿主代取密钥。
+**密钥不出宿主**：面板只能读到 `hasKey: true`，读不到明文。语音来源存在 `sources.json`，柯林斯密钥存在 `dictionary.json`（都在 `$DSH_HOME/dsh-english-reader/`，权限 `0600`）；测试连接、拉列表、查词典都由宿主代取密钥。
 
 ## 词典
 
@@ -97,7 +97,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 | iciba | 中文 | 无 | 按词性分行，词组同样可查 |
 | WordNet（Datamuse） | 英文 | 无 | 完整句子释义，词性标记清晰 |
 | Wiktionary | 英文 | 无 | WordNet 查不到时的备份 |
-| 柯林斯 | 英文 | **自己的 API key** | 官方接口，质量最高，在设置里填 |
+| 柯林斯 | 英文 | **自己的 API key** | 官方接口；密钥保存在宿主机 `$DSH_HOME/dsh-english-reader/dictionary.json`（权限 `0600`），浏览器只能看到「已保存」 |
 | 使用模型 | 中英 | DSH 模型 | 柯林斯式整句释义 + IPA + 中文 + 例句 |
 
 模型来源写出的释义是完整句子（例如 `To regulate an activity means to control it by means of official rules.`），而不是同义词堆砌。每个词的模型释义**只生成一次**，结果按词缓存，切换显示语言或来源都不会重复消耗额度。两者都没有词条时（多为生僻词组），才回落到下面的翻译来源。宿主缓存最近 200 条词条，重复查询不再发请求。

@@ -95,7 +95,7 @@ Two independent settings: **Show** (both / English / Chinese) and **Dictionary**
 | iciba | Chinese | nothing | Grouped by part of speech; phrases work too |
 | WordNet (Datamuse) | English | nothing | Full-sentence definitions with clear part-of-speech tags |
 | Wiktionary | English | nothing | Backup when WordNet has nothing |
-| Collins | English | **your own API key** | The official API; best quality, key goes in the settings |
+| Collins | English | **your own API key** | The official API; the key lives on the host in `$DSH_HOME/dsh-english-reader/dictionary.json` (mode `0600`) and the browser only learns whether one exists |
 | Your model | both | your DSH model | Collins-style sentences, IPA, Chinese gloss and an example |
 
 Exactly one source answers a lookup.
