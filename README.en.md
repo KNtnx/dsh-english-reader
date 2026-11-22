@@ -84,10 +84,6 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 
 **Keys never reach the browser**: the panel only sees `hasKey: true`. Source records live in `$DSH_HOME/dsh-english-reader/sources.json` (mode `0600`), and the host attaches the key for connection tests, model lists and voice lists.
 
-<p align="center">
-  <img src="docs/words.png" width="640" alt="Saved words: an entry expands in place with Chinese senses by part of speech and English definitions with examples"/>
-</p>
-
 ## Dictionaries
 
 | Dictionary | Source | Notes |
@@ -98,6 +94,10 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 The setting offers Both / English / Chinese only. Translation is only used when neither has an entry, which mostly means an unusual phrase. The host caches the last 200 lookups.
 
 Lookups are limited to the sentence being read: every other sentence stays plain text, so a long article never pays for per-word nodes.
+
+<p align="center">
+  <img src="docs/words.png" width="640" alt="Saved words: an entry expands in place with Chinese senses by part of speech and English definitions with examples"/>
+</p>
 
 ## Translation sources
 
@@ -125,6 +125,10 @@ Lookups are limited to the sentence being read: every other sentence stays plain
 | Local model stuck at "not downloaded" | Press Download and wait for 100%; models live in `$DSH_HOME/dsh-english-reader/models/` |
 | Custom API returns 400 / 401 | Use **Test** in the editor — it names the path and the original response. 401 means the vendor rejected the key |
 | A voice is ignored | Some vendors silently fall back on unknown voices; try a source that reports errors |
+| Word highlight does not move | Only Edge reports word timestamps; other sources estimate from length |
+| A lookup always says nothing was found | Dictionaries need a network; check the dictionary setting first, and note that an unusual phrase falls back to translation |
+| A saved word says "none" for its sentence | Words saved from the dictionary card have no source sentence, by design |
+| The panel is blank again | The render error boundary prints the stack; send it over instead of a screenshot |
 
 ## Development
 

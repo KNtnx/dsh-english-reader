@@ -84,10 +84,6 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 **密钥不出宿主**：面板只能读到 `hasKey: true`，读不到明文。来源记录存在 `$DSH_HOME/dsh-english-reader/sources.json`（权限 `0600`），测试连接、拉模型列表、拉音色列表都由宿主代取密钥。
 
-<p align="center">
-  <img src="docs/words.png" width="640" alt="我的单词：点开即展开词条，中文按词性分行，英文释义带例句"/>
-</p>
-
 ## 词典
 
 | 词典 | 来源 | 说明 |
@@ -99,12 +95,15 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 查词只对**当前朗读句**开放：其余句子是纯文本，长文的渲染开销不随句数增长。
 
+<p align="center">
+  <img src="docs/words.png" width="640" alt="我的单词：点开即展开词条，中文按词性分行，英文释义带例句"/>
+</p>
+
 ## 翻译来源
 
 | 来源 | 需要 | 说明 |
 | --- | --- | --- |
 | DSH 自带模型 | 无 | 选任一本 Harness 已配置的供应商，再选该供应商下的模型 |
-| 阿里云百炼原生 | 无 | 走插件自带的 TTS 来源密钥，无需额外配置 |
 | Google | 无 | 免密钥的 `translate.googleapis.com` |
 | Microsoft | 密钥 + 区域 | Azure 翻译 v3 |
 | 腾讯云 | SecretId / SecretKey | TMT `TextTranslateBatch`，TC3-HMAC-SHA256 签名 |
