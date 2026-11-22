@@ -44,6 +44,7 @@ const PATHS = {
   models: '/api-dsh-english-reader/tts/models',
   voices: '/api-dsh-english-reader/tts/voices',
   dict: '/api-dsh-english-reader/dict',
+  dictAi: '/api-dsh-english-reader/dict/ai',
   translate: '/api-dsh-english-reader/translate',
   translateOptions: '/api-dsh-english-reader/translate/options',
   translateModels: '/api-dsh-english-reader/translate/models',
@@ -118,6 +119,83 @@ async function writeSources(list) {
   await writeFile(sourcesFile(), JSON.stringify(list, null, 2), { mode: 0o600 });
 }
 
+/**
+ * Ask the configured model for a dictionary entry.
+ *
+ * The prompt is written to produce what a good learner's dictionary prints:
+ * a full-sentence English definition rather than a synonym list, a short
+ * Chinese gloss, and one natural example. Strict JSON keeps the parsing
+ * boring, and the reply is cached per word so switching dictionary kinds
+ * never pays for the same word twice.
+ */
+async function defineWithModel(ctx, word, requested) {
+  const cached = modelEntries.get(word);
+  if (cached !== undefined) return cached;
+  const llm = ctx.get('llm');
+  if (llm === undefined) throw new Error('this Harness exposes no model service');
+  const route = (typeof requested?.provider === 'string' && typeof requested?.model === 'string' && requested.model !== '')
+    ? { provider: requested.provider, model: requested.model }
+    : defaultModelRoute(ctx);
+  if (route === undefined || route.model === '') throw new Error('no model is configured');
+  const system = [
+    'You are the editor of a learner\'s dictionary in the style of Collins COBUILD and the',
+    'Concise Oxford: full sentences that explain a word through its use, never bare synonym',
+    'lists, no encyclopaedic padding, no etymology unless it changes the meaning.',
+    'For the given English word or phrase, reply with JSON only, no prose and no code fences:',
+    '{"word":"as asked","phonetic":"IPA without slashes, or empty","senses":[{"pos":"v.","en":"one complete English sentence defining this sense in context, 12-22 words","zh":"简体中文释义，一个短语，不加句号","example":"a short natural sentence using the word"}]}',
+    'Rules: 1-4 senses, most common first; pos uses the short form (v., n., adj., adv., phr.);',
+    'the English definition must be a sentence a learner can read aloud; the example must not',
+    'repeat the definition; if the word has a common figurative sense, include it after the literal one.',
+  ].join(' ');
+  let output = '';
+  for await (const chunk of llm.stream({
+    provider: route.provider,
+    model: route.model,
+    system,
+    messages: [{ role: 'user', content: [{ type: 'text', text: word }] }],
+    temperature: 0.3,
+  })) {
+    if (chunk.type === 'text-delta') output += chunk.text;
+    else if (chunk.type === 'finish' && chunk.reason.kind === 'error') {
+      throw new Error(chunk.reason.failure?.message ?? 'the model refused to define the word');
+    }
+  }
+  const start = output.indexOf('{');
+  const end = output.lastIndexOf('}');
+  if (start < 0 || end <= start) throw new Error('the model did not answer with JSON');
+  let parsed;
+  try {
+    parsed = JSON.parse(output.slice(start, end + 1));
+  } catch {
+    throw new Error('the model answered with JSON that does not parse');
+  }
+  const senses = (Array.isArray(parsed.senses) ? parsed.senses : [])
+    .filter((sense) => sense !== null && typeof sense === 'object')
+    .map((sense) => ({
+      pos: String(sense.pos ?? '').trim(),
+      def: String(sense.en ?? '').trim(),
+      zh: String(sense.zh ?? '').trim(),
+      example: String(sense.example ?? '').trim(),
+    }))
+    .filter((sense) => sense.def !== '');
+  if (senses.length === 0) throw new Error('the model returned no usable sense');
+  const entry = {
+    word: String(parsed.word ?? word),
+    phonetic: String(parsed.phonetic ?? '').replace(/^\/+|\/+$/g, ''),
+    senses,
+    source: 'model',
+  };
+  modelEntries.set(word, entry);
+  if (modelEntries.size > DICTIONARY_LIMIT) {
+    const oldest = modelEntries.keys().next();
+    if (!oldest.done) modelEntries.delete(oldest.value);
+  }
+  return entry;
+}
+
+/** Entries the model produced, kept so a word is only paid for once. */
+const modelEntries = new Map();
+
 /** Definitions already fetched, so a second look at a word is free. */
 const dictionaryCache = new Map();
 const DICTIONARY_LIMIT = 200;
@@ -139,6 +217,32 @@ function dictKey(raw) {
  * @param {string} word - the normalized word.
  * @returns {Promise<object|null>} the entry, or null when it is unknown.
  */
+/** WordNet definitions through Datamuse; free, keyless, and already tagged by part of speech. */
+async function lookUpWordNet(word) {
+  try {
+    const response = await fetch(
+      `https://api.datamuse.com/words?sp=${encodeURIComponent(word)}&md=dp&max=1`,
+      { signal: AbortSignal.timeout(9000) },
+    );
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const first = Array.isArray(payload) ? payload[0] : null;
+    if (first === null || String(first.word ?? '').toLowerCase() !== word) return null;
+    const senses = [];
+    for (const line of first.defs ?? []) {
+      const [pos, ...rest] = String(line).split('\t');
+      const meaning = rest.join(' ').trim();
+      if (meaning === '') continue;
+      senses.push({ pos: String(pos).trim(), def: meaning, example: '' });
+      if (senses.length >= 6) break;
+    }
+    if (senses.length === 0) return null;
+    return { word, phonetic: '', senses, source: 'wordnet' };
+  } catch {
+    return null;
+  }
+}
+
 async function lookUpWord(word) {
   if (dictionaryCache.has(word)) return dictionaryCache.get(word);
   let payload;
@@ -1335,7 +1439,7 @@ export function apply(ctx, config) {
       const kinds = String(url.searchParams.get('kinds') ?? 'both');
       // "en" is Wiktionary, "zh" is the Chinese 简明-style entry; ask only for what is wanted.
       const [en, zh] = await Promise.all([
-        kinds === 'zh' ? null : lookUpWord(word),
+        kinds === 'zh' ? null : (await lookUpWordNet(word)) ?? (await lookUpWord(word)),
         kinds === 'en' ? null : lookUpChinese(word),
       ]);
       if (en === null && zh === null) {
@@ -1344,6 +1448,42 @@ export function apply(ctx, config) {
       return Response.json({ ok: true, en, zh }, { headers: { 'cache-control': 'no-store' } });
     },
   }), 'english-reader: dictionary route');
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: PATHS.dictAi,
+    /** Model-written dictionary entry; the panel caches it too. */
+    handler: async (request, response) => {
+      const chunks = [];
+      try {
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      } catch {
+        response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'unreadable body' }));
+        return;
+      }
+      let body = {};
+      try {
+        body = JSON.parse(Buffer.concat(chunks).toString('utf8') ?? '{}');
+      } catch {
+        response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'invalid json' }));
+        return;
+      }
+      const word = dictKey(body?.word ?? '');
+      if (word === '' || !/^[a-z][a-z' -]{0,48}$/.test(word)) {
+        response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'badWord' }));
+        return;
+      }
+      try {
+        const entry = await defineWithModel(ctx, word, body?.model);
+        response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+          .end(JSON.stringify({ ok: true, entry }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        response.writeHead(502, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ ok: false, error: message }));
+      }
+    },
+  }), 'english-reader: model dictionary');
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

@@ -89,9 +89,10 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 | Dictionary | Source | Notes |
 | --- | --- | --- |
 | Chinese | iciba | Grouped by part of speech, **no key**; phrases work too |
-| English | Wiktionary | Definitions and examples, no key |
+| English | WordNet (Datamuse), then Wiktionary | WordNet first, Wiktionary only when it has nothing |
+| Model | your configured DSH model | Collins-style full sentences, IPA, Chinese gloss and an example, generated **once per word** |
 
-The setting offers Both / English / Chinese only. Translation is only used when neither has an entry, which mostly means an unusual phrase. The host caches the last 200 lookups.
+The setting offers Both / English / Chinese only / Model. The model option writes complete-sentence definitions rather than synonym lists, caches every entry locally, and therefore never pays for the same word twice. Translation is only used when neither has an entry, which mostly means an unusual phrase. The host caches the last 200 lookups.
 
 Lookups are limited to the sentence being read: every other sentence stays plain text, so a long article never pays for per-word nodes.
 
