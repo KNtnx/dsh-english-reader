@@ -116,6 +116,7 @@ window.__ModuleLoader__.load({
         'words.sayExample': 'Read the example',
         'words.context': 'From',
         'words.noContext': 'none',
+        'words.emptyEntry': 'The selected dictionary has no entry for this word.',
         'backRow': 'Back to this dialogue',
         'display.width.narrow': 'Narrow',
         'display.width.mid': 'Medium',
@@ -329,6 +330,7 @@ window.__ModuleLoader__.load({
         'words.sayExample': '朗读例句',
         'words.context': '原文',
         'words.noContext': '无',
+        'words.emptyEntry': '当前词典没有这个词条。',
         'backRow': '返回当前对话',
         'display.width.narrow': '窄',
         'display.width.mid': '中',
@@ -764,9 +766,13 @@ window.__ModuleLoader__.load({
       if (Array.isArray(value)) {
         return value
           .filter((sense) => sense !== null && typeof sense === 'object')
-          .map((sense) => ({ pos: String(sense.pos ?? ''), def: String(sense.def ?? '') }))
+          .map((sense) => ({
+            pos: String(sense.pos ?? ''),
+            def: String(sense.def ?? ''),
+            example: String(sense.example ?? ''),
+          }))
       }
-      if (typeof value === 'string' && value.trim() !== '') return [{ pos: '', def: value }]
+      if (typeof value === 'string' && value.trim() !== '') return [{ pos: '', def: value, example: '' }]
       return []
     }
 
@@ -1006,6 +1012,7 @@ window.__ModuleLoader__.load({
         })))
       const [wordFilter, setWordFilter] = useState('')
       const [openWordId, setOpenWordId] = useState('')
+      const [openLoading, setOpenLoading] = useState(false)
       /** What a lookup shows: English definitions, a Chinese gloss, or both. */
       const [dictKind, setDictKind] = useState(() => (['both', 'en', 'zh'].includes(initial.dictKind) ? initial.dictKind : 'both'))
       const [renamingSource, setRenamingSource] = useState('')
@@ -2386,13 +2393,17 @@ window.__ModuleLoader__.load({
           || zh.toLowerCase().includes(needle)
       })
 
-      /** Open one saved word in place, fetching its full entry when only a stub was kept. */
+      /** Open one saved word in place, fetching whatever the current kind needs. */
       const toggleWord = (item) => {
-        if (openWordId === item.id) { setOpenWordId(''); return }
+        if (openWordId === item.id) { setOpenWordId(''); setOpenLoading(false); return }
         setOpenWordId(item.id)
-        const empty = sensesOf(item.senses).length === 0 && sensesOf(item.translation).length === 0
-        if (!empty) return
+        // A kind switch can leave the stored entry without the senses it now needs.
+        const needsChinese = dictKind !== 'en' && sensesOf(item.translation).length === 0
+        const needsEnglish = dictKind !== 'zh' && sensesOf(item.senses).length === 0
+        if (!needsChinese && !needsEnglish) return
+        setOpenLoading(true)
         void lookUp(item.word).then((found) => {
+          setOpenLoading(false)
           if (found === undefined) return
           setWords((all) => all.map((entry) => (entry.id === item.id
             ? { ...entry, senses: found.senses ?? [], translation: found.translation ?? [] }
@@ -2443,9 +2454,11 @@ window.__ModuleLoader__.load({
                   }, glyph(ICON.close, 13))),
                 open
                   ? h('div', { className: 'er-wrow-body' },
-                    chinese.length === 0 && english.length === 0
+                    openLoading
                       ? h('p', { className: 'er-wordcard-note' }, t('dict.loading'))
-                      : null,
+                      : chinese.length === 0 && english.length === 0
+                        ? h('p', { className: 'er-wordcard-note' }, t('words.emptyEntry'))
+                        : null,
                     chinese.length > 0
                       ? h('div', { className: 'er-wrow-zh' }, chinese.map((sense, at) => h('div', {
                         key: at, className: 'er-wordcard-trline',
