@@ -1058,8 +1058,12 @@ window.__ModuleLoader__.load({
       const [collinsDraft, setCollinsDraft] = useState('')
       const [collinsSaved, setCollinsSaved] = useState(false)
       /** Which model writes entries; defaults to the translation route. */
-      const [dictModel, setDictModel] = useState(() => (initial.dictModel !== null && typeof initial.dictModel === 'object'
-        ? initial.dictModel : null))
+      const [dictModelCn, setDictModelCn] = useState(() => (initial.dictModelCn !== null && typeof initial.dictModelCn === 'object'
+        ? initial.dictModelCn : null))
+      const [dictModelEn, setDictModelEn] = useState(() => (initial.dictModelEn !== null && typeof initial.dictModelEn === 'object'
+        ? initial.dictModelEn : null))
+      /** Model lists per provider, for whichever slot asks for one. */
+      const [modelsByProvider, setModelsByProvider] = useState({})
       /** Model-written entries, keyed by word, so a kind switch never pays twice. */
       const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
       const [renamingSource, setRenamingSource] = useState('')
@@ -1075,8 +1079,8 @@ window.__ModuleLoader__.load({
       const [routes, setRoutes] = useState([])
       const [modelChoices, setModelChoices] = useState([])
       /** Which model writes dictionary entries; declared after the states it reads. */
-      const dictRoute = dictModel?.provider ?? translateRoute
-      const dictModelId = dictModel?.model ?? translateModel?.model ?? ''
+      const routeOf = (slot) => slot?.provider ?? translateRoute
+      const modelOf = (slot) => slot?.model ?? translateModel?.model ?? ''
       const [translating, setTranslating] = useState(false)
       const [translateError, setTranslateError] = useState('')
       const [settingsOpen, setSettingsOpen] = useState(false)
@@ -1147,15 +1151,16 @@ window.__ModuleLoader__.load({
       }, [collinsDraft])
 
       /** Resolve one word through one source; the answer is cached, not stored in the entry. */
-      const resolveSource = useCallback(async (word, source) => {
-        const key = `${String(word).toLowerCase()}|${source}`;
+      const resolveSource = useCallback(async (word, source, modelRoute) => {
+        const modelKey = source === 'model' ? `${modelRoute?.provider ?? translateRoute}/${modelRoute?.model ?? ''}` : '';
+        const key = `${String(word).toLowerCase()}|${source}${modelKey === '' ? '' : `|${modelKey}`}`;
         const cached = aiEntries[key];
         if (cached !== undefined) return cached;
         if (source === 'model') {
           const response = await fetch(DICT_AI, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ word, model: dictModel ?? translateModel ?? undefined }),
+            body: JSON.stringify({ word, model: modelRoute ?? translateModel ?? undefined }),
           });
           const payload = await response.json().catch(() => ({}));
           if (payload.ok !== true) throw new Error(payload.error ?? t('dict.failed'));
@@ -1184,21 +1189,24 @@ window.__ModuleLoader__.load({
         };
         setAiEntries((current) => ({ ...current, [key]: built }));
         return built;
-      }, [dictModel, translateModel, aiEntries, t])
+      }, [translateRoute, translateModel, aiEntries, t])
 
       /** Resolve a word through both slots, sharing a request when they agree. */
       const resolveWord = useCallback(async (word) => {
         const wantsChinese = dictShow !== 'en';
         const wantsEnglish = dictShow !== 'zh';
-        const wanted = [...new Set([wantsEnglish ? dictEn : 'none', wantsChinese ? dictCn : 'none'].filter((source) => source !== 'none'))];
+        const slots = [];
+        if (wantsEnglish) slots.push({ source: dictEn, route: dictModelEn });
+        if (wantsChinese) slots.push({ source: dictCn, route: dictModelCn });
+        const wanted = slots.map((slot) => slot.source);
         if (wanted.length === 0) return null;
-        const parts = await Promise.all(wanted.map((source) => resolveSource(word, source)));
+        const parts = await Promise.all(slots.map((slot) => resolveSource(word, slot.source, slot.route)));
         const chinese = wantsChinese ? (parts[wanted.indexOf(dictCn)]?.translation ?? []) : [];
         const english = wantsEnglish ? (parts[wanted.indexOf(dictEn)]?.senses ?? []) : [];
         if (chinese.length === 0 && english.length === 0) return null;
         const phonetic = parts.map((part) => part?.phonetic ?? '').find((value) => value !== '') ?? '';
         return { word, phonetic, senses: english, translation: chinese, source: `${dictEn}+${dictCn}` };
-      }, [dictShow, dictCn, dictEn, resolveSource])
+      }, [dictShow, dictCn, dictEn, dictModelCn, dictModelEn, resolveSource])
 
       /** Fetch (or reuse) the entry the expansion should show right now. */
       const loadWordEntry = useCallback(async (word) => {
@@ -1215,6 +1223,22 @@ window.__ModuleLoader__.load({
       }, [resolveWord])
 
       useEffect(() => { if (settingsOpen) void loadCollinsState() }, [settingsOpen, loadCollinsState])
+
+      // A slot that asks for a model needs that provider's list, fetched once.
+      useEffect(() => {
+        if (!settingsOpen || !['model'].includes(dictCn) && !['model'].includes(dictEn)) return
+        for (const slot of [dictCn === 'model' ? dictModelCn : null, dictEn === 'model' ? dictModelEn : null]) {
+          const provider = slot?.provider ?? translateRoute
+          if (provider === '' || modelsByProvider[provider] !== undefined) continue
+          void fetch(`${TRANSLATE_MODELS}?provider=${encodeURIComponent(provider)}`, { cache: 'no-store' })
+            .then((response) => (response.ok ? response.json() : null))
+            .then((payload) => {
+              const list = Array.isArray(payload?.models) ? payload.models : [];
+              setModelsByProvider((current) => ({ ...current, [provider]: list }));
+            })
+            .catch(() => {});
+        }
+      }, [settingsOpen, dictCn, dictEn, dictModelCn, dictModelEn, translateRoute, modelsByProvider])
 
       // The open entry belongs to whichever dictionary is selected now.
       useEffect(() => {
@@ -1683,11 +1707,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModel,
+            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModel])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -2981,20 +3005,35 @@ window.__ModuleLoader__.load({
                 ['collins', t('dict.src.collins')],
                 ['model', t('dict.src.model')],
               ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
-              (dictCn === 'model' || dictEn === 'model') ? h('div', { className: 'er-pair' },
+              dictCn === 'model' ? h('div', { className: 'er-pair' },
                 field(t('dict.modelProvider'), h('select', {
-                  className: 'er-select', value: dictRoute,
-                  onChange: (event) => setDictModel({ provider: event.target.value, model: '' }),
+                  className: 'er-select', value: routeOf(dictModelCn),
+                  onChange: (event) => setDictModelCn({ provider: event.target.value, model: '' }),
                 }, (routes.length === 0
                   ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
                   : routes
                 ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
                 field(t('dict.modelName'), h('select', {
-                  className: 'er-select', value: dictModelId,
-                  onChange: (event) => setDictModel({ provider: dictRoute, model: event.target.value }),
-                }, (modelChoices.length === 0
+                  className: 'er-select', value: modelOf(dictModelCn),
+                  onChange: (event) => setDictModelCn({ provider: routeOf(dictModelCn), model: event.target.value }),
+                }, ((modelsByProvider[routeOf(dictModelCn)] ?? []).length === 0
                   ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
-                  : modelChoices
+                  : modelsByProvider[routeOf(dictModelCn)]
+                ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))) : null,
+              dictEn === 'model' ? h('div', { className: 'er-pair' },
+                field(t('dict.modelProvider'), h('select', {
+                  className: 'er-select', value: routeOf(dictModelEn),
+                  onChange: (event) => setDictModelEn({ provider: event.target.value, model: '' }),
+                }, (routes.length === 0
+                  ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
+                  : routes
+                ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
+                field(t('dict.modelName'), h('select', {
+                  className: 'er-select', value: modelOf(dictModelEn),
+                  onChange: (event) => setDictModelEn({ provider: routeOf(dictModelEn), model: event.target.value }),
+                }, ((modelsByProvider[routeOf(dictModelEn)] ?? []).length === 0
+                  ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
+                  : modelsByProvider[routeOf(dictModelEn)]
                 ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))) : null,
               !(dictCn === 'collins' || dictEn === 'collins')
                 ? null
