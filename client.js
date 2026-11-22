@@ -875,8 +875,8 @@ window.__ModuleLoader__.load({
       const box = size ?? 18
       return h('svg', {
         viewBox: viewBox ?? '0 0 24 24', width: box, height: box, 'aria-hidden': true, focusable: 'false',
-        fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8',
-        'stroke-linecap': 'round', 'stroke-linejoin': 'round',
+        fill: 'none', stroke: 'currentColor', strokeWidth: 1.8,
+        strokeLinecap: 'round', strokeLinejoin: 'round',
       }, paths.map((d, at) => h('path', { key: at, d })))
     }
 
@@ -1063,8 +1063,6 @@ window.__ModuleLoader__.load({
       /** Which model writes entries; defaults to the translation route. */
       const [dictModel, setDictModel] = useState(() => (initial.dictModel !== null && typeof initial.dictModel === 'object'
         ? initial.dictModel : null))
-      const dictRoute = dictModel?.provider ?? translateRoute
-      const dictModelId = dictModel?.model ?? translateModel?.model ?? ''
       /** Model-written entries, keyed by word, so a kind switch never pays twice. */
       const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
       const [renamingSource, setRenamingSource] = useState('')
@@ -1079,6 +1077,9 @@ window.__ModuleLoader__.load({
         typeof initial.translateModel?.provider === 'string' ? initial.translateModel.provider : ''))
       const [routes, setRoutes] = useState([])
       const [modelChoices, setModelChoices] = useState([])
+      /** Which model writes dictionary entries; declared after the states it reads. */
+      const dictRoute = dictModel?.provider ?? translateRoute
+      const dictModelId = dictModel?.model ?? translateModel?.model ?? ''
       const [translating, setTranslating] = useState(false)
       const [translateError, setTranslateError] = useState('')
       const [settingsOpen, setSettingsOpen] = useState(false)
