@@ -25,6 +25,7 @@ window.__ModuleLoader__.load({
     const VOICES = '/api-dsh-english-reader/tts/voices'
     const DICT_PATH = '/api-dsh-english-reader/dict'
     const DICT_AI = '/api-dsh-english-reader/dict/ai'
+    const DICT_KEY = '/api-dsh-english-reader/dict/key'
     const SPEECH_SOURCE_PATH = '/api-dsh-english-reader/tts/sources'
     /** A home-directory path reads better (and wraps less) as `~/…`. */
     function shortPath(value) {
@@ -107,6 +108,9 @@ window.__ModuleLoader__.load({
         'dict.src.model': 'Your model',
         'dict.collinsKey': 'Collins key',
         'dict.collinsKeyHint': 'Your own Collins API access key',
+        'dict.collinsStored': 'A key is stored on the host',
+        'dict.collinsOnHost': 'Stored on the host, never in this browser.',
+        'dict.collinsMissing': 'No key yet — Collins will answer with an error.',
         'dict.kindHint': 'One dictionary answers at a time. Collins needs your own API key; the model writes entries itself and pays once per word.',
         'dict.placeholder': 'Look up a word or phrase',
         'dict.loading': 'Looking it up…',
@@ -331,6 +335,9 @@ window.__ModuleLoader__.load({
         'dict.src.model': '使用模型',
         'dict.collinsKey': '柯林斯密钥',
         'dict.collinsKeyHint': '你自己的 Collins API access key',
+        'dict.collinsStored': '宿主机已保存密钥',
+        'dict.collinsOnHost': '密钥存在宿主机，不进入浏览器。',
+        'dict.collinsMissing': '还没有密钥——柯林斯查询会直接报错。',
         'dict.kindHint': '一次只用一个词典。柯林斯需要你自己的 API 密钥；模型释义由 DSH 模型生成，每个单词只消耗一次额度。',
         'dict.placeholder': '查单词或词组',
         'dict.loading': '正在查询…',
@@ -1041,7 +1048,10 @@ window.__ModuleLoader__.load({
       /** Who answers: exactly one dictionary, or the model. */
       const [dictSource, setDictSource] = useState(() => (['iciba', 'wordnet', 'wiktionary', 'collins', 'model'].includes(initial.dictSource)
         ? initial.dictSource : 'iciba'))
-      const [collinsKey, setCollinsKey] = useState(() => (typeof initial.collinsKey === 'string' ? initial.collinsKey : ''))
+      /** Whether the host holds a Collins key; the key itself never reaches the browser. */
+      const [collinsReady, setCollinsReady] = useState(false)
+      const [collinsDraft, setCollinsDraft] = useState('')
+      const [collinsSaved, setCollinsSaved] = useState(false)
       /** Model-written entries, keyed by word, so a kind switch never pays twice. */
       const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
       const [renamingSource, setRenamingSource] = useState('')
@@ -1097,6 +1107,8 @@ window.__ModuleLoader__.load({
         setSheetPlace({ left, top, width })
         setSettingsOpen(true)
       }, [])
+
+      useEffect(() => { if (settingsOpen) void loadCollinsState() }, [settingsOpen, loadCollinsState])
 
       // The card belongs to the document on screen; leaving that document closes it.
       useEffect(() => { setSettingsOpen(false) }, [view, activeId])
@@ -1558,11 +1570,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictLang, dictSource, collinsKey, aiEntries,
+            showTranslation, translateSource, translateModel, autoNext, words, dictLang, dictSource, aiEntries,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictLang, dictSource, collinsKey, aiEntries])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictLang, dictSource, aiEntries])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -2062,7 +2074,34 @@ window.__ModuleLoader__.load({
         window.addEventListener('pointerup', stop)
       }, [panelWidth])
 
-      /** Fetch one word: both dictionaries at once, translation only as a last resort. */
+      /** Ask the host whether it holds a Collins key; never carry the key here. */
+      const loadCollinsState = useCallback(async () => {
+        try {
+          const response = await fetch(DICT_KEY, { cache: 'no-store' })
+          if (!response.ok) return
+          const payload = await response.json();
+          setCollinsReady(payload.hasKey === true);
+        } catch { /* the settings simply show it as missing */ }
+      }, [])
+
+      /** Hand one key to the host and forget it here. */
+      const saveCollinsKey = useCallback(async () => {
+        const key = collinsDraft.trim();
+        if (key === '') return;
+        try {
+          const response = await fetch(DICT_KEY, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ key }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          setCollinsReady(payload.hasKey === true);
+          setCollinsSaved(true);
+          setCollinsDraft('');
+        } catch { /* the row keeps saying it is missing */ }
+      }, [collinsDraft])
+
+      /** Fetch one word: one dictionary answers, translation only as a last resort. */
       const lookUp = useCallback(async (raw) => {
         const word = String(raw).trim();
         if (word === '') return;
@@ -2096,10 +2135,7 @@ window.__ModuleLoader__.load({
             const key = `${word.toLowerCase()}|${dictSource}`;
             built = aiEntries[key];
             if (built === undefined) {
-              const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}&source=${dictSource}`, {
-                cache: 'no-store',
-                headers: dictSource === 'collins' && collinsKey !== '' ? { 'x-collins-key': collinsKey } : undefined,
-              });
+              const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}&source=${dictSource}`, { cache: 'no-store' });
               const payload = await response.json().catch(() => ({ ok: false }));
               if (payload.ok !== true) {
                 if (payload.code === 'notFound') { setCardState('missing'); return undefined; }
@@ -2153,7 +2189,7 @@ window.__ModuleLoader__.load({
           setCardState('failed');
           setCardError(t('dict.failed'));
         }
-      }, [translateSource, translateModel, translateOptions, dictLang, dictSource, collinsKey, aiEntries, t])
+      }, [translateSource, translateModel, translateOptions, dictLang, dictSource, aiEntries, t])
 
       const openPinnedWord = useCallback((raw) => {
         const word = String(raw).trim();
@@ -2905,11 +2941,19 @@ window.__ModuleLoader__.load({
                 ['model', t('dict.src.model')],
               ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
               dictSource === 'collins'
-                ? field(t('dict.collinsKey'), h('input', {
-                  className: 'er-input', type: 'password', value: collinsKey, spellCheck: false,
-                  placeholder: t('dict.collinsKeyHint'),
-                  onChange: (event) => setCollinsKey(event.target.value),
-                }))
+                ? h('div', { className: 'er-key-row' },
+                  field(t('dict.collinsKey'), h('input', {
+                    className: 'er-input', type: 'password', value: collinsDraft, spellCheck: false,
+                    placeholder: collinsReady ? t('dict.collinsStored') : t('dict.collinsKeyHint'),
+                    onChange: (event) => { setCollinsDraft(event.target.value); setCollinsSaved(false) },
+                    onKeyDown: (event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCollinsKey() } },
+                  })),
+                  h('button', {
+                    type: 'button', className: 'er-add er-add-plain',
+                    disabled: collinsDraft.trim() === '',
+                    onClick: () => { void saveCollinsKey() },
+                  }, collinsSaved ? t('dict.saved') : t('dict.save')),
+                  h('p', { className: 'er-fine' }, collinsReady ? t('dict.collinsOnHost') : t('dict.collinsMissing')))
                 : null,
               h('p', { className: 'er-fine' }, t('dict.kindHint'))),
             h('section', { className: 'er-sect' },
@@ -3338,6 +3382,8 @@ window.__ModuleLoader__.load({
 .er-seg-sm{height:24px;padding:2px;gap:1px}
 .er-seg-sm .er-seg-btn{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 3px);padding:0 8px;font-weight:500}
 .er-seg-sm .er-seg-btn[aria-checked='true']{font-weight:600}
+.er-key-row{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
+.er-key-row .er-fine{margin:0}
 .er-custom{display:flex;align-items:center;gap:5px;height:24px}
 .er-custom-input{width:64px;height:24px;padding:0 6px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px)}
 .er-custom-unit{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 3px);color:var(--dsw-alias-label-secondary,#888)}

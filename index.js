@@ -45,6 +45,7 @@ const PATHS = {
   voices: '/api-dsh-english-reader/tts/voices',
   dict: '/api-dsh-english-reader/dict',
   dictAi: '/api-dsh-english-reader/dict/ai',
+  dictKey: '/api-dsh-english-reader/dict/key',
   translate: '/api-dsh-english-reader/translate',
   translateOptions: '/api-dsh-english-reader/translate/options',
   translateModels: '/api-dsh-english-reader/translate/models',
@@ -117,6 +118,27 @@ async function readSources() {
 async function writeSources(list) {
   await mkdir(dirname(sourcesFile()), { recursive: true });
   await writeFile(sourcesFile(), JSON.stringify(list, null, 2), { mode: 0o600 });
+}
+
+/** Where the Collins access key is kept: same folder, same mode as the sources. */
+function dictKeyFile() {
+  return join(dshHome(), 'dsh-english-reader', 'dictionary.json');
+}
+
+/** @returns {Promise<string>} the stored Collins key, or an empty string. */
+async function readCollinsKey() {
+  try {
+    const parsed = JSON.parse(await readFile(dictKeyFile(), 'utf8'));
+    return typeof parsed?.collinsKey === 'string' ? parsed.collinsKey : '';
+  } catch {
+    return '';
+  }
+}
+
+/** @param {string} key - the Collins access key; an empty string clears it. */
+async function writeCollinsKey(key) {
+  await mkdir(dirname(dictKeyFile()), { recursive: true });
+  await writeFile(dictKeyFile(), JSON.stringify({ collinsKey: key }, null, 2), { mode: 0o600 });
 }
 
 /**
@@ -1471,7 +1493,7 @@ export function apply(ctx, config) {
       // Exactly one source answers: no chaining, so a slow or missing dictionary
       // never hides behind another one.
       const source = String(url.searchParams.get('source') ?? 'iciba');
-      const collinsKey = String(request.headers?.get?.('x-collins-key') ?? '');
+      const collinsKey = source === 'collins' ? await readCollinsKey() : '';
       let en = null;
       let zh = null;
       let failure = '';
@@ -1491,6 +1513,31 @@ export function apply(ctx, config) {
       return Response.json({ ok: true, source, en, zh }, { headers: { 'cache-control': 'no-store' } });
     },
   }), 'english-reader: dictionary route');
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: PATHS.dictKey,
+    /** The browser may learn whether a key exists, never what it is. */
+    handler: async (request, response) => {
+      const send = (payload, status) => response.writeHead(status ?? 200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+        .end(JSON.stringify(payload));
+      if (request.method === 'GET') {
+        const key = await readCollinsKey();
+        send({ hasKey: key !== '', masked: key === '' ? '' : `${key.slice(0, 4)}…${key.slice(-2)}` });
+        return;
+      }
+      if (request.method !== 'POST') { send({ error: 'method not allowed' }, 405); return; }
+      const chunks = [];
+      try {
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      } catch { send({ error: 'unreadable body' }, 400); return; }
+      let body;
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') ?? '{}'); } catch { send({ error: 'invalid json' }, 400); return; }
+      const key = typeof body?.key === 'string' ? body.key.trim() : '';
+      await writeCollinsKey(key);
+      send({ hasKey: key !== '' });
+    },
+  }), 'english-reader: collins key');
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
