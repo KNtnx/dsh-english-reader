@@ -24,7 +24,7 @@ This plugin ties "what is spoken" to "what is read": sentence-level seeking, wor
 It handles both shapes: a hard-wrapped **article** is joined into sentences instead of being split mid-thought, and a labelled **dialogue** (`Emma: Hi` / `Daniel: Hello`) is detected and read by two alternating voices.
 
 <p align="center">
-  <img src="docs/reader.png" width="880" alt="Full-page reader: the current sentence highlighted, English and its translation paired, a word outlined on hover, width and size controls on top, the transport bar below"/>
+  <img src="docs/reader-2.png" width="880" alt="Dialogue reading: alternating speakers, the current line highlighted, English and its translation paired, settings on the right"/>
 </p>
 
 <br clear="all">
@@ -119,7 +119,7 @@ Lookups are limited to the sentence being read, so a long article never pays for
 - Both the saved-words page and the library return to the open dialogue in one click, and both share the reader's width and size controls.
 
 <p align="center">
-  <img src="docs/words.png" width="640" alt="Saved words: an entry expands in place with Chinese senses by part of speech and English definitions with examples"/>
+  <img src="docs/words-2.png" width="640" alt="Saved words: revive expanded, Chinese senses by part of speech, English definitions with examples and speakers, the source sentence at the end"/>
 </p>
 
 ## Translation sources

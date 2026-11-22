@@ -24,7 +24,7 @@
 他同时照顾两件事：**文章和对话**。粘贴一篇硬换行的文章不会被拆成乱句；粘贴 `Emma: Hi` / `Daniel: Hello` 这样的对话，会自动识别两个说话人并用两套音色轮流读。
 
 <p align="center">
-  <img src="docs/reader.png" width="880" alt="整页阅读：当前句高亮、原文与译文成对、悬停单词出现可右键的淡框、顶部宽度与字号控制条、底部播放条"/>
+  <img src="docs/reader-2.png" width="880" alt="对话阅读：角色 E 与 D 交替，当前句高亮，英文与译文成对，右侧为朗读设置"/>
 </p>
 
 <br clear="all">
@@ -119,7 +119,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 - 「我的单词」和「对话库」都可一键返回当前对话；两页共用阅读页的宽度与字号设置。
 
 <p align="center">
-  <img src="docs/words.png" width="640" alt="我的单词：点开即展开词条，中文按词性分行，英文释义带例句"/>
+  <img src="docs/words-2.png" width="640" alt="我的单词：展开 revive，中文按词性分行，英文释义带例句与小喇叭，末尾标注原句"/>
 </p>
 
 ## 翻译来源
