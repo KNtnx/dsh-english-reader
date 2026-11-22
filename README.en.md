@@ -24,7 +24,7 @@ This plugin ties "what is spoken" to "what is read": sentence-level seeking, wor
 It handles both shapes: a hard-wrapped **article** is joined into sentences instead of being split mid-thought, and a labelled **dialogue** (`Emma: Hi` / `Daniel: Hello`) is detected and read by two alternating voices.
 
 <p align="center">
-  <img src="docs/reader.png" width="880" alt="Full-page reader: sentences with translations, current-turn marker, width and size controls, settings card"/>
+  <img src="docs/reader.png" width="880" alt="Full-page reader: the current sentence highlighted, English and its translation paired, a word outlined on hover, width and size controls on top, the transport bar below"/>
 </p>
 
 <br clear="all">
