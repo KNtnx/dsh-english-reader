@@ -175,34 +175,13 @@ instant, and the next three sentences are synthesized ahead of the one playing.
 
 A switch right of the loop control decides what happens when a sentence ends. With it off, playback stops there and the position is kept; pressing play resumes from the same sentence.
 
-## Word definitions
+## Dictionaries
 
-- **Only the sentence being read is interactive**: that row is split into word spans, so a long article never pays for per-word nodes.
-- **Hover** draws a faint outline, the affordance for a right-click.
-- **Right-click** opens a card with part of speech, English definitions and examples.
-- **Chinese** is fetched as a follow-up translation and shown as one line at the bottom; phrases with no entry go straight to the translation source.
+Show, Chinese source and English source are three independent settings:
 
-Entries come from **Wiktionary**'s public REST API (no key). The host caches the last 200 lookups and never stores a query history.
-
-## Saved words
-
-- The card's **Save word** button stores the entry together with the sentence it came from.
-- The bookmark button beside the library opens the saved-words page: filter, reopen, remove.
-- Deduplicated by normalized lowercase word; capped at 500, oldest dropped first.
-- Kept in browser `localStorage`, never uploaded.
-
-## Dictionary entry
-
-The book button at the far right of the display bar opens a pinned lookup card: type a word or phrase and press Enter. It stays open until closed, so reading continues underneath.
-
-
-## Chinese dictionary
-
-Chinese meanings come from **iciba** (a 简明-style dictionary, no key), grouped by part of speech — `adj. 神圣的；虔诚的`. English still comes from Wiktionary. The setting offers Both / English / Chinese only, and translation is only a fallback when neither has the phrase.
-
-## Saved words
-
-- **Left-click a row to expand the entry in place**: Chinese by part of speech, English definitions with examples, and the sentence the word was saved from.
-- The book button moves an entry into the pinned lookup card; the cross removes it.
-- Both the saved-words page and the library have a **Back** control returning to the dialogue you came from.
-- Both pages carry the same width and size controls as the reader.
+- **Show** decides which languages the card prints.
+- **Chinese source** offers iciba or the model; **English source** offers WordNet, Wiktionary, Collins or the model.
+- Choosing the model expands that slot's own provider and model beneath it, so each language can use a different model.
+- Only the languages being shown are queried.
+- The Collins key lives on the host in `dictionary.json` (mode 0600); the browser only learns whether one exists.
+- Model entries are cached per `word|source|model`, so switching never pays twice.

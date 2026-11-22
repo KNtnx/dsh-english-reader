@@ -43,6 +43,8 @@ It handles both shapes: a hard-wrapped **article** is joined into sentences inst
 - **Saved words**: save from the card, reach the list from the header, and expand an entry in place with its examples and source sentence.
 - **Reading width and type size**: narrow / medium / wide / custom, three type presets plus an exact pixel size, shared by the reader, the library and the saved words.
 
+The settings card has four collapsible sections; only the engine starts open, and the ones you expand are remembered. Open what you need and the card stays inside the window.
+
 ## Install
 
 **From GitHub (recommended)**
@@ -86,23 +88,35 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 
 ## Dictionaries
 
-| Dictionary | Source | Notes |
-| --- | --- | --- |
-Two independent settings: **Show** (both / English / Chinese) and **Dictionary**:
+Three independent settings:
+
+**Show**: Both / English / Chinese — what the card prints
+
+**Chinese source**: iciba (free) / your model
+
+**English source**: WordNet (free) / Wiktionary (free) / Collins (needs a key) / your model
+
+Choosing the model source expands **that slot's own provider and model right beneath it**, so the two languages can use different models. Only the languages being shown are queried, so English-only mode never spends a Chinese lookup.
 
 | Source | Language | Needs | Notes |
 | --- | --- | --- | --- |
 | iciba | Chinese | nothing | Grouped by part of speech; phrases work too |
 | WordNet (Datamuse) | English | nothing | Full-sentence definitions with clear part-of-speech tags |
-| Wiktionary | English | nothing | Backup when WordNet has nothing |
-| Collins | English | **your own API key** | The official API; the key lives on the host in `$DSH_HOME/dsh-english-reader/dictionary.json` (mode `0600`) and the browser only learns whether one exists |
+| Wiktionary | English | nothing | Backup beyond WordNet |
+| Collins | English | **your own API key** | Official API; the key lives on the host in `$DSH_HOME/dsh-english-reader/dictionary.json` (mode `0600`) and the browser only learns whether one exists |
 | Your model | both | your DSH model | Collins-style sentences, IPA, Chinese gloss and an example |
 
-Exactly one source answers a lookup.
+The model writes complete sentences (`To regulate an activity means to control it by means of official rules.`) rather than synonym lists. **Each word is generated once**, cached per `word|source|model`, so switching language, source or model never pays twice. Translation is only used when neither source has an entry.
 
-The model writes complete-sentence definitions rather than synonym lists, caches every entry locally, and therefore never pays for the same word twice. Translation is only used when neither has an entry, which mostly means an unusual phrase. The host caches the last 200 lookups.
+Lookups are limited to the sentence being read, so a long article never pays for per-word nodes.
 
-Lookups are limited to the sentence being read: every other sentence stays plain text, so a long article never pays for per-word nodes.
+## Saved words
+
+- Click a row to **expand it in place**: Chinese by part of speech, English definitions with examples, then the sentence it came from.
+- The expansion **follows the current dictionary**: switching source or shown language re-resolves it instead of freezing the answer it was saved with.
+- Only the **word and its sentence** are stored; the definitions come from the dictionary or the cache, so one word reads from WordNet in English mode and from iciba in Chinese mode.
+- Three speakers: the word, each English example, and the source sentence. A word saved from the lookup card has no sentence, so that speaker is greyed out.
+- Both the saved-words page and the library return to the open dialogue in one click, and both share the reader's width and size controls.
 
 <p align="center">
   <img src="docs/words.png" width="640" alt="Saved words: an entry expands in place with Chinese senses by part of speech and English definitions with examples"/>
