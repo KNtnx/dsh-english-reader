@@ -825,14 +825,17 @@ window.__ModuleLoader__.load({
     }
 
     /** Line-art variant: some shapes are illegible as a filled path at 16px. */
-    function glyphLine(paths, size) {
+    function glyphLine(paths, size, viewBox) {
       const box = size ?? 18
       return h('svg', {
-        viewBox: '0 0 24 24', width: box, height: box, 'aria-hidden': true, focusable: 'false',
+        viewBox: viewBox ?? '0 0 24 24', width: box, height: box, 'aria-hidden': true, focusable: 'false',
         fill: 'none', stroke: 'currentColor', 'stroke-width': '1.8',
         'stroke-linecap': 'round', 'stroke-linejoin': 'round',
       }, paths.map((d, at) => h('path', { key: at, d })))
     }
+
+    /** The headset glyph sits one pixel low in a 24x24 grid; shift the window up. */
+    const HEADSET_BOX = '0 1 24 24'
 
     const ICON = {
       play: 'M8 5.5v13l11-6.5z',
@@ -865,10 +868,7 @@ window.__ModuleLoader__.load({
 
     /** The guide card's glyph. */
     function GuideGlyph(props) {
-      return h('svg', {
-        viewBox: '0 0 24 24', width: props?.size ?? 20, height: props?.size ?? 20,
-        'aria-hidden': true, focusable: 'false',
-      }, h('path', { d: ICON.headset, fill: 'currentColor' }))
+      return glyphLine(ICON.headset, props?.size ?? 20, HEADSET_BOX)
     }
 
     /**
@@ -3348,7 +3348,7 @@ window.__ModuleLoader__.load({
     /** The sidebar panel's icon; the sidebar owns the button itself. */
     function PanelIcon(props) {
       const size = typeof props?.size === 'number' ? props.size : 18
-      return glyphLine(ICON.headset, size)
+      return glyphLine(ICON.headset, size, HEADSET_BOX)
     }
 
     /** Composer-row button that opens the panel. */
@@ -3365,7 +3365,7 @@ window.__ModuleLoader__.load({
 .er-launch{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;box-sizing:border-box;border-radius:var(--dsw-radius-xs,6px);border:0.5px solid transparent;background:transparent;color:var(--dsw-alias-label-secondary,#666);cursor:pointer;padding:0}
 .er-launch:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.06));color:var(--dsw-alias-label-primary,#111)}
 .er-launch:focus-visible{outline:2px solid var(--dsw-alias-brand-primary,#4b7bec);outline-offset:1px}
-`), glyph(ICON.headset, 17))
+`), glyphLine(ICON.headset, 17, HEADSET_BOX))
     }
 
     return {
