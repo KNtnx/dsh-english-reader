@@ -96,9 +96,12 @@ window.__ModuleLoader__.load({
         'display.width': 'Width',
         'dict.title': 'Dictionary',
         'settings.dict': 'Dictionary',
-        'dict.slot.cn': 'Chinese',
-        'dict.slot.en': 'English',
-        'dict.src.none': 'Off',
+        'dict.show': 'Show',
+        'dict.kind.both': 'Both',
+        'dict.kind.en': 'English',
+        'dict.kind.zh': 'Chinese',
+        'dict.slot.cn': 'Chinese source',
+        'dict.slot.en': 'English source',
         'dict.src.iciba': 'iciba (free)',
         'dict.src.wordnet': 'WordNet (free)',
         'dict.src.wiktionary': 'Wiktionary (free)',
@@ -323,9 +326,12 @@ window.__ModuleLoader__.load({
         'display.width': '宽度',
         'dict.title': '字典',
         'settings.dict': '字典',
-        'dict.slot.cn': '中文',
-        'dict.slot.en': '英英',
-        'dict.src.none': '不使用',
+        'dict.show': '显示',
+        'dict.kind.both': '中英',
+        'dict.kind.en': '英英',
+        'dict.kind.zh': '中文',
+        'dict.slot.cn': '中文来源',
+        'dict.slot.en': '英英来源',
         'dict.src.iciba': 'iciba（免费）',
         'dict.src.wordnet': 'WordNet（免费）',
         'dict.src.wiktionary': 'Wiktionary（免费）',
@@ -1043,9 +1049,10 @@ window.__ModuleLoader__.load({
       const [openLoading, setOpenLoading] = useState(false)
       /** What a lookup shows: English definitions, a Chinese gloss, or both. */
       /** Two slots, one per language: each picks its own dictionary. */
-      const [dictCn, setDictCn] = useState(() => (['iciba', 'model', 'none'].includes(initial.dictCn) ? initial.dictCn : 'iciba'))
-      const [dictEn, setDictEn] = useState(() => (['wordnet', 'wiktionary', 'collins', 'model', 'none'].includes(initial.dictEn)
-        ? initial.dictEn : 'wordnet'))
+      /** What the card shows: both languages, English only, or Chinese only. */
+      const [dictShow, setDictShow] = useState(() => (['both', 'en', 'zh'].includes(initial.dictShow) ? initial.dictShow : 'both'))
+      const [dictCn, setDictCn] = useState(() => (['iciba', 'model'].includes(initial.dictCn) ? initial.dictCn : 'iciba'))
+      const [dictEn, setDictEn] = useState(() => (['wordnet', 'wiktionary', 'collins', 'model'].includes(initial.dictEn) ? initial.dictEn : 'wordnet'))
       /** Whether the host holds a Collins key; the key itself never reaches the browser. */
       const [collinsReady, setCollinsReady] = useState(false)
       const [collinsDraft, setCollinsDraft] = useState('')
@@ -1181,15 +1188,17 @@ window.__ModuleLoader__.load({
 
       /** Resolve a word through both slots, sharing a request when they agree. */
       const resolveWord = useCallback(async (word) => {
-        const sources = [...new Set([dictCn, dictEn].filter((source) => source !== 'none'))];
-        if (sources.length === 0) return null;
-        const parts = await Promise.all(sources.map((source) => resolveSource(word, source)));
-        const chinese = dictCn === 'none' ? [] : (parts[sources.indexOf(dictCn)]?.translation ?? []);
-        const english = dictEn === 'none' ? [] : (parts[sources.indexOf(dictEn)]?.senses ?? []);
+        const wantsChinese = dictShow !== 'en';
+        const wantsEnglish = dictShow !== 'zh';
+        const wanted = [...new Set([wantsEnglish ? dictEn : 'none', wantsChinese ? dictCn : 'none'].filter((source) => source !== 'none'))];
+        if (wanted.length === 0) return null;
+        const parts = await Promise.all(wanted.map((source) => resolveSource(word, source)));
+        const chinese = wantsChinese ? (parts[wanted.indexOf(dictCn)]?.translation ?? []) : [];
+        const english = wantsEnglish ? (parts[wanted.indexOf(dictEn)]?.senses ?? []) : [];
         if (chinese.length === 0 && english.length === 0) return null;
         const phonetic = parts.map((part) => part?.phonetic ?? '').find((value) => value !== '') ?? '';
         return { word, phonetic, senses: english, translation: chinese, source: `${dictEn}+${dictCn}` };
-      }, [dictCn, dictEn, resolveSource])
+      }, [dictShow, dictCn, dictEn, resolveSource])
 
       /** Fetch (or reuse) the entry the expansion should show right now. */
       const loadWordEntry = useCallback(async (word) => {
@@ -1212,7 +1221,7 @@ window.__ModuleLoader__.load({
         if (openWordId === '') return
         const row = words.find((item) => item.id === openWordId)
         if (row !== undefined) void loadWordEntry(row.word)
-      }, [dictCn, dictEn, loadWordEntry])
+      }, [dictShow, dictCn, dictEn, loadWordEntry])
 
       // The card belongs to the document on screen; leaving that document closes it.
       useEffect(() => { setSettingsOpen(false) }, [view, activeId])
@@ -1674,11 +1683,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictCn, dictEn, aiEntries, dictModel,
+            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModel,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictCn, dictEn, aiEntries, dictModel])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModel])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -2557,8 +2566,8 @@ window.__ModuleLoader__.load({
               const open = openWordId === item.id
               const resolved = open && cardEntry !== null && String(cardEntry.word).toLowerCase() === String(item.word).toLowerCase()
                 ? cardEntry : null
-              const chinese = resolved === null ? [] : sensesOf(resolved.translation)
-              const english = resolved === null ? [] : sensesOf(resolved.senses)
+              const chinese = resolved === null || dictShow === 'en' ? [] : sensesOf(resolved.translation)
+              const english = resolved === null || dictShow === 'zh' ? [] : sensesOf(resolved.senses)
               const unsupported = open && resolved !== null && chinese.length === 0 && english.length === 0
               const hasContext = typeof item.context === 'string' && item.context.trim() !== ''
               const cachedCn = aiEntries[`${String(item.word).toLowerCase()}|${dictCn}`]
@@ -2949,13 +2958,19 @@ window.__ModuleLoader__.load({
                 : h('p', { className: 'er-fine' }, t('voice.manual'))),
             h('section', { className: 'er-sect' },
               h('h3', { className: 'er-sect-title' }, t('settings.dict')),
+              field(t('dict.show'), h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('dict.show') },
+                ['both', 'en', 'zh'].map((kind) => h('button', {
+                  key: kind, type: 'button', role: 'radio',
+                  'aria-checked': dictShow === kind ? 'true' : 'false',
+                  className: 'er-seg-btn',
+                  onClick: () => setDictShow(kind),
+                }, t(`dict.kind.${kind}`))))),
               field(t('dict.slot.cn'), h('select', {
                 className: 'er-select', value: dictCn,
                 onChange: (event) => setDictCn(event.target.value),
               }, [
                 ['iciba', t('dict.src.iciba')],
                 ['model', t('dict.src.model')],
-                ['none', t('dict.src.none')],
               ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
               field(t('dict.slot.en'), h('select', {
                 className: 'er-select', value: dictEn,
@@ -2965,7 +2980,6 @@ window.__ModuleLoader__.load({
                 ['wiktionary', t('dict.src.wiktionary')],
                 ['collins', t('dict.src.collins')],
                 ['model', t('dict.src.model')],
-                ['none', t('dict.src.none')],
               ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
               (dictCn === 'model' || dictEn === 'model') ? h('div', { className: 'er-pair' },
                 field(t('dict.modelProvider'), h('select', {
