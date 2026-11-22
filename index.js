@@ -900,6 +900,46 @@ async function translateWithGoogle(texts, target, signal) {
 }
 
 /**
+ * Translate through the Volcengine web translator.
+ *
+ * Its public page uses this endpoint with no account and no key. It takes one
+ * string per request, so a batch becomes a few concurrent calls.
+ * @param {string[]} texts - sentences to translate.
+ * @param {string} target - target language code.
+ * @param {AbortSignal} signal - aborts the whole batch.
+ * @returns {Promise<string[]>} one translation per sentence.
+ */
+async function translateWithVolcengine(texts, target, signal) {
+  const result = new Array(texts.length);
+  const language = target.toLowerCase().startsWith('zh') ? 'zh' : target.split('-')[0];
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < texts.length) {
+      const index = cursor;
+      cursor += 1;
+      const response = await fetch('https://translate.volcengine.com/crx/translate/v1/', {
+        method: 'POST',
+        signal,
+        headers: {
+          'content-type': 'application/json',
+          origin: 'https://translate.volcengine.com',
+          referer: 'https://translate.volcengine.com/',
+          'user-agent': 'Mozilla/5.0',
+        },
+        body: JSON.stringify({ source_language: 'auto', target_language: language, text: texts[index] }),
+      });
+      if (!response.ok) throw new Error(`Volcengine answered ${response.status}`);
+      const payload = await response.json();
+      const line = payload?.translation;
+      if (typeof line !== 'string' || line === '') throw new Error('Volcengine returned no translation');
+      result[index] = line;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(4, texts.length) }, worker));
+  return result;
+}
+
+/**
  * Translate through Azure AI Translator.
  * @param {string[]} texts - the lines.
  * @param {string} target - target language tag.
@@ -1202,6 +1242,7 @@ export function apply(ctx, config) {
         providers: [
           { id: 'dsh', ready: model !== undefined && model.model !== '' },
           { id: 'google', ready: true },
+          { id: 'volc', ready: true },
           { id: 'microsoft', ready: microsoft },
           { id: 'tencent', ready: tencent },
         ],
@@ -1515,7 +1556,7 @@ export function apply(ctx, config) {
         response.writeHead(413, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'text too long' }));
         return;
       }
-      const source = ['dsh', 'google', 'microsoft', 'tencent'].includes(body?.source) ? body.source : 'dsh';
+      const source = ['dsh', 'google', 'volc', 'microsoft', 'tencent'].includes(body?.source) ? body.source : 'dsh';
       const target = targetLanguage(config, body?.target);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 120000);
@@ -1523,6 +1564,8 @@ export function apply(ctx, config) {
         let translations;
         if (source === 'google') {
           translations = await translateWithGoogle(texts, target, controller.signal);
+        } else if (source === 'volc') {
+          translations = await translateWithVolcengine(texts, target, controller.signal);
         } else if (source === 'microsoft') {
           const key = secret(config, 'microsoftKey', 'DSH_ENGLISH_READER_MICROSOFT_KEY');
           if (key === '') throw new Error('no Microsoft Translator key is configured');

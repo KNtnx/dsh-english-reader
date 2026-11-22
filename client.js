@@ -44,7 +44,7 @@ window.__ModuleLoader__.load({
     /** Translation sources, in offering order. */
     // Microsoft and Tencent take keys from the plugin row's config, which the
     // panel cannot write, so offering them here would only ever fail.
-    const SOURCES = ['dsh', 'google']
+    const SOURCES = ['dsh', 'google', 'volc']
     /** Sentences synthesized ahead of the one playing. */
     const PREFETCH = 3
     const SPEEDS = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
@@ -245,6 +245,7 @@ window.__ModuleLoader__.load({
         'trans.model': 'Model',
         'trans.dsh': 'This Harness model',
         'trans.google': 'Google (free)',
+        'trans.volc': 'Volcengine (free)',
         'trans.unavailable': 'not configured',
         'trans.working': 'Translating…',
         'trans.failed': 'Translation failed',
@@ -455,6 +456,7 @@ window.__ModuleLoader__.load({
         'trans.model': '模型',
         'trans.dsh': 'DSH 自带模型',
         'trans.google': '谷歌（免费）',
+        'trans.volc': '火山翻译（免费）',
         'trans.unavailable': '未配置',
         'trans.working': '正在翻译…',
         'trans.failed': '翻译失败',
