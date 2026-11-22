@@ -114,7 +114,7 @@ window.__ModuleLoader__.load({
         'dict.collinsStored': 'A key is stored on the host',
         'dict.collinsOnHost': 'Stored on the host, never in this browser.',
         'dict.collinsMissing': 'No key yet — Collins will answer with an error.',
-        'dict.kindHint': 'One dictionary per language, independent of each other; Off hides that language. The model can serve both and pays once per word.',
+        'dict.kindHint': 'Each language picks its own source; Show decides which of them the card prints. The model can be chosen separately for each.',
         'dict.placeholder': 'Look up a word or phrase',
         'dict.loading': 'Looking it up…',
         'dict.missing': 'No entry found. Try the phrase in the box above.',
@@ -344,7 +344,7 @@ window.__ModuleLoader__.load({
         'dict.collinsStored': '宿主机已保存密钥',
         'dict.collinsOnHost': '密钥存在宿主机，不进入浏览器。',
         'dict.collinsMissing': '还没有密钥——柯林斯查询会直接报错。',
-        'dict.kindHint': '中文和英英各选一个，互不影响；选「不使用」就只显示另一种。模型可以同时承担两者，每个单词只消耗一次额度。',
+        'dict.kindHint': '中文和英英各选一个，互不影响；显示决定卡片里露哪几种。模型可以每种语言单独指定。',
         'dict.placeholder': '查单词或词组',
         'dict.loading': '正在查询…',
         'dict.missing': '没查到，试试在上面的输入框里查词组。',
@@ -2996,15 +2996,6 @@ window.__ModuleLoader__.load({
                 ['iciba', t('dict.src.iciba')],
                 ['model', t('dict.src.model')],
               ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
-              field(t('dict.slot.en'), h('select', {
-                className: 'er-select', value: dictEn,
-                onChange: (event) => setDictEn(event.target.value),
-              }, [
-                ['wordnet', t('dict.src.wordnet')],
-                ['wiktionary', t('dict.src.wiktionary')],
-                ['collins', t('dict.src.collins')],
-                ['model', t('dict.src.model')],
-              ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
               dictCn === 'model' ? h('div', { className: 'er-pair' },
                 field(t('dict.modelProvider'), h('select', {
                   className: 'er-select', value: routeOf(dictModelCn),
@@ -3020,6 +3011,15 @@ window.__ModuleLoader__.load({
                   ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
                   : modelsByProvider[routeOf(dictModelCn)]
                 ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))) : null,
+              field(t('dict.slot.en'), h('select', {
+                className: 'er-select', value: dictEn,
+                onChange: (event) => setDictEn(event.target.value),
+              }, [
+                ['wordnet', t('dict.src.wordnet')],
+                ['wiktionary', t('dict.src.wiktionary')],
+                ['collins', t('dict.src.collins')],
+                ['model', t('dict.src.model')],
+              ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
               dictEn === 'model' ? h('div', { className: 'er-pair' },
                 field(t('dict.modelProvider'), h('select', {
                   className: 'er-select', value: routeOf(dictModelEn),
