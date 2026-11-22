@@ -1687,11 +1687,14 @@ window.__ModuleLoader__.load({
         setItems(next)
         setActiveId(fallback?.id ?? '')
         setIndex(at)
-        setView(fallback === null ? 'editor' : 'reader')
         setDraft('')
         setEditingId(null)
+        // Stay wherever the delete was pressed. Only an empty library has
+        // nothing left to show, and it falls back to the paste box.
+        if (fallback === null) setView('editor')
+        else if (view === 'editor') setView('reader')
         setNoticeKey('')
-      }, [items, activeId, cancelPlayback, persist])
+      }, [items, activeId, cancelPlayback, persist, view])
 
       /** Add a source the user configured, then make it the active one. */
       /** Open the dialog on an existing source; the key stays blank on purpose. */
