@@ -1145,7 +1145,10 @@ window.__ModuleLoader__.load({
         const bottom = rect === undefined || rect === null ? 56 : rect.bottom
         const left = Math.max(12, Math.min(right - width, viewportWidth - width - 12))
         const top = Math.min(bottom + 6, Math.max(12, viewportHeight - 160))
-        setSheetPlace({ left, top, width })
+        // Leave a visible margin at the bottom edge, so the card always fits on
+        // screen and its own scroller can reach the last control.
+        const maxHeight = Math.max(240, viewportHeight - top - 24)
+        setSheetPlace({ left, top, width, maxHeight })
         setSettingsOpen(true)
       }, [])
 
@@ -2940,7 +2943,12 @@ window.__ModuleLoader__.load({
         h('div', {
           key: 'card',
           className: 'er-card',
-          style: { left: `${sheetPlace.left}px`, top: `${sheetPlace.top}px`, width: `${sheetPlace.width}px` },
+          style: {
+            left: `${sheetPlace.left}px`,
+            top: `${sheetPlace.top}px`,
+            width: `${sheetPlace.width}px`,
+            maxHeight: `${sheetPlace.maxHeight ?? 560}px`,
+          },
           role: 'dialog', 'aria-modal': 'true', 'aria-label': t('settings.title'),
         },
           h('div', { className: 'er-card-head' },
@@ -3648,19 +3656,19 @@ window.__ModuleLoader__.load({
 .er-add-plain{padding-left:0;padding-right:0;margin-left:0}
 .er-add-plain:hover{background:transparent;text-decoration:underline}
 .er-voice-acts{display:flex;gap:14px;align-items:center}
-.er-card{position:fixed;z-index:41;display:flex;flex-direction:column;max-height:min(78vh,640px);overflow:hidden;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .14s ease-out}
+.er-card{position:fixed;z-index:41;display:flex;flex-direction:column;max-height:min(calc(100vh - 40px),640px);overflow:hidden;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .14s ease-out}
 @keyframes er-pop{from{opacity:0;transform:translateY(-3px)}}
 .er-card-head{display:flex;align-items:center;gap:8px;padding:9px 8px 9px 14px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
 .er-card-title{flex:1;margin:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) + 0.5px);font-weight:600}
 .er-card-hint{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2.5px);color:var(--dsw-alias-label-secondary,#888);white-space:nowrap}
-.er-card-body{overflow-y:auto;overscroll-behavior:contain;padding-bottom:14px}
+.er-card-body{overflow-y:auto;overscroll-behavior:contain;padding-bottom:32px}
 .er-card-body .er-sect:last-of-type{border-bottom:0}
 .er-facts{display:flex;flex-direction:column;margin-top:9px}
 .er-fact{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:3px 0;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);line-height:1.45}
 .er-fact-label{flex:0 0 auto;color:var(--dsw-alias-label-secondary,#666)}
 .er-fact-value{min-width:0;text-align:right;color:var(--dsw-alias-label-primary,#111);overflow-wrap:anywhere}
 .er-sect{border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
-.er-sect-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:11px 14px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.er-sect-toggle{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;padding:10px 14px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .er-sect-toggle:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.04))}
 .er-sect-toggle .er-sect-title{padding:0}
 .er-sect-toggle svg{color:var(--dsw-alias-label-secondary,#888);transition:transform .12s ease}
