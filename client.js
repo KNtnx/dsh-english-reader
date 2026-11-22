@@ -850,7 +850,9 @@ window.__ModuleLoader__.load({
       edit: 'M4 17.2V20h2.8L17 9.8 14.2 7 4 17.2zM19.7 7.3a1 1 0 0 0 0-1.4l-1.6-1.6a1 1 0 0 0-1.4 0l-1.2 1.2 3 3z',
       rename: 'M5 8h9v2H5zm0 5h6v2H5zM16.5 15.6l1.4-1.4 1.9 1.9-1.4 1.4zM14 17.1l2.3 2.3-2.9.6z',
       restart: 'M12 5V2L7.5 6 12 10V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z',
-      headset: 'M12 3a8 8 0 0 0-8 8v5a3 3 0 0 0 3 3h2v-8H6v-.5A6 6 0 0 1 18 11v.5h-3v8h2a3 3 0 0 0 3-3v-5a8 8 0 0 0-8-8z',
+      headset: [
+        'M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a1 1 0 0 1-1-1v-7a9 9 0 0 1 18 0v7a1 1 0 0 1-1 1h-2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3',
+      ],
       library: 'M4 5h3v14H4zm5 0h3v14H9zm5 0h2.6l3 14-2.6.5z',
       plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
       close: 'M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4z',
@@ -3150,7 +3152,6 @@ window.__ModuleLoader__.load({
 .er-fatal{display:flex;flex-direction:column;gap:8px;padding:16px;overflow:auto}
 .er-fatal-title{margin:0;font-weight:600;color:var(--dsw-alias-state-error-primary,#c0392b)}
 .er-fatal-body{margin:0;font-family:ui-monospace,monospace;font-size:11px;line-height:1.5;white-space:pre-wrap;word-break:break-word;color:var(--dsw-alias-label-secondary,#666)}
-.er-panel-icon{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px}
 .er-display{display:flex;align-items:center;gap:10px;padding:6px 12px;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec))}
 /* Compact segmented control: the panel's own control shape, at reading-bar scale. */
 .er-seg-sm{height:24px;padding:2px;gap:1px}
@@ -3345,8 +3346,9 @@ window.__ModuleLoader__.load({
     }
 
     /** The sidebar panel's icon; the sidebar owns the button itself. */
-    function PanelIcon() {
-      return h('span', { className: 'er-panel-icon' }, glyph(ICON.headset, 18))
+    function PanelIcon(props) {
+      const size = typeof props?.size === 'number' ? props.size : 18
+      return glyphLine(ICON.headset, size)
     }
 
     /** Composer-row button that opens the panel. */
