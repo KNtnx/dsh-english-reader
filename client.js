@@ -1149,6 +1149,60 @@ window.__ModuleLoader__.load({
         } catch { /* the row keeps saying it is missing */ }
       }, [collinsDraft])
 
+      /** Resolve one word through the current source; the answer is cached, not stored in the entry. */
+      const resolveWord = useCallback(async (word) => {
+        const key = `${String(word).toLowerCase()}|${dictSource}`
+        const cached = aiEntries[key];
+        if (cached !== undefined) return cached;
+        if (dictSource === 'model') {
+          const response = await fetch(DICT_AI, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ word, model: dictModel ?? translateModel ?? undefined }),
+          });
+          const payload = await response.json().catch(() => ({}));
+          if (payload.ok !== true) throw new Error(payload.error ?? t('dict.failed'));
+          const built = {
+            word: payload.entry.word,
+            phonetic: payload.entry.phonetic,
+            senses: payload.entry.senses.map((sense) => ({ pos: sense.pos, def: sense.def, example: sense.example })),
+            translation: payload.entry.senses.filter((sense) => sense.zh !== '').map((sense) => ({ pos: sense.pos, def: sense.zh })),
+            source: 'model',
+          };
+          setAiEntries((current) => ({ ...current, [key]: built }));
+          return built;
+        }
+        const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}&source=${dictSource}`, { cache: 'no-store' });
+        const payload = await response.json().catch(() => ({ ok: false }));
+        if (payload.ok !== true) {
+          if (payload.code === 'notFound') return null;
+          throw new Error(payload.error ?? t('dict.failed'));
+        }
+        const built = {
+          word,
+          phonetic: payload.en?.phonetic ?? '',
+          senses: payload.en?.senses ?? [],
+          translation: payload.zh?.senses ?? [],
+          source: dictSource,
+        };
+        setAiEntries((current) => ({ ...current, [key]: built }));
+        return built;
+      }, [dictSource, dictModel, translateModel, aiEntries, t])
+
+      /** Fetch (or reuse) the entry the expansion should show right now. */
+      const loadWordEntry = useCallback(async (word) => {
+        setOpenLoading(true)
+        try {
+          const entry = await resolveWord(word)
+          setCardEntry(entry);
+          setCardState(entry === null ? 'missing' : 'ready');
+        } catch {
+          setCardState('failed');
+        } finally {
+          setOpenLoading(false)
+        }
+      }, [resolveWord])
+
       useEffect(() => { if (settingsOpen) void loadCollinsState() }, [settingsOpen, loadCollinsState])
 
       // The open entry belongs to whichever dictionary is selected now.
@@ -2526,46 +2580,6 @@ window.__ModuleLoader__.load({
           || zh.toLowerCase().includes(needle)
       })
 
-      /** Resolve one word through the current source; the answer is cached, not stored in the entry. */
-      const resolveWord = useCallback(async (word) => {
-        const key = `${String(word).toLowerCase()}|${dictSource}`
-        const cached = aiEntries[key];
-        if (cached !== undefined) return cached;
-        if (dictSource === 'model') {
-          const response = await fetch(DICT_AI, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ word, model: dictModel ?? translateModel ?? undefined }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (payload.ok !== true) throw new Error(payload.error ?? t('dict.failed'));
-          const built = {
-            word: payload.entry.word,
-            phonetic: payload.entry.phonetic,
-            senses: payload.entry.senses.map((sense) => ({ pos: sense.pos, def: sense.def, example: sense.example })),
-            translation: payload.entry.senses.filter((sense) => sense.zh !== '').map((sense) => ({ pos: sense.pos, def: sense.zh })),
-            source: 'model',
-          };
-          setAiEntries((current) => ({ ...current, [key]: built }));
-          return built;
-        }
-        const response = await fetch(`${DICT_PATH}?word=${encodeURIComponent(word)}&source=${dictSource}`, { cache: 'no-store' });
-        const payload = await response.json().catch(() => ({ ok: false }));
-        if (payload.ok !== true) {
-          if (payload.code === 'notFound') return null;
-          throw new Error(payload.error ?? t('dict.failed'));
-        }
-        const built = {
-          word,
-          phonetic: payload.en?.phonetic ?? '',
-          senses: payload.en?.senses ?? [],
-          translation: payload.zh?.senses ?? [],
-          source: dictSource,
-        };
-        setAiEntries((current) => ({ ...current, [key]: built }));
-        return built;
-      }, [dictSource, dictModel, translateModel, aiEntries, t])
-
       /** Open one saved word in place, resolving it through the current dictionary. */
       const toggleWord = (item) => {
         if (openWordId === item.id) { setOpenWordId(''); setOpenLoading(false); return }
@@ -2574,19 +2588,6 @@ window.__ModuleLoader__.load({
         void loadWordEntry(item.word)
       }
 
-      /** Fetch (or reuse) the entry the expansion should show right now. */
-      const loadWordEntry = useCallback(async (word) => {
-        setOpenLoading(true)
-        try {
-          const entry = await resolveWord(word)
-          setCardEntry(entry);
-          setCardState(entry === null ? 'missing' : 'ready');
-        } catch {
-          setCardState('failed');
-        } finally {
-          setOpenLoading(false)
-        }
-      }, [resolveWord])
 
       const wordsPage = h('div', { className: 'er-scroll er-words', style: pageBox },
         h('div', { className: 'er-words-bar' },
