@@ -15,9 +15,12 @@
  * in-process; an ordinary Node process started in this directory can.
  */
 
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const run = promisify(execFile);
 import { existsSync } from 'node:fs';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -40,6 +43,7 @@ const PATHS = {
   tts: '/api-dsh-english-reader/tts',
   status: '/api-dsh-english-reader/local/status',
   install: '/api-dsh-english-reader/local/install',
+  gpuInstall: '/api-dsh-english-reader/local/gpu',
   device: '/api-dsh-english-reader/local/device',
   ttsSources: '/api-dsh-english-reader/tts/sources',
   validate: '/api-dsh-english-reader/tts/validate',
@@ -86,6 +90,91 @@ function gpuDirs() {
 }
 
 let deviceChoice = process.env.DSH_ENGLISH_READER_DEVICE === 'cuda' ? 'cuda' : 'auto';
+
+/** Progress of the one-click GPU runtime download. */
+const gpuInstall = { phase: 'idle', progress: 0, detail: '', error: '' };
+
+/** The CUDA runtime wheels onnxruntime 1.21 was built against. */
+const CUDA_WHEELS = [
+  ['nvidia-cuda-runtime-cu12', 'cuda_runtime'],
+  ['nvidia-cublas-cu12', 'cublas'],
+  ['nvidia-cudnn-cu12', 'cudnn'],
+];
+
+/** Pick the manylinux x86_64 wheel a package publishes for cp3xx. */
+async function wheelUrl(name, version) {
+  const endpoint = version === undefined
+    ? `https://pypi.org/pypi/${name}/json`
+    : `https://pypi.org/pypi/${name}/${version}/json`;
+  const response = await fetch(endpoint, { signal: AbortSignal.timeout(20000) });
+  if (!response.ok) throw new Error(`${name}: PyPI answered ${response.status}`);
+  const payload = await response.json();
+  const files = payload?.urls ?? [];
+  const wheel = files.find((file) => String(file.filename ?? '').includes('manylinux')
+    && String(file.filename ?? '').includes('x86_64')
+    && String(file.filename ?? '').endsWith('.whl'));
+  if (wheel === undefined) throw new Error(`${name}: no manylinux x86_64 wheel was published`);
+  return wheel.url;
+}
+
+/** Download and unpack everything the CUDA provider needs, once. */
+async function installGpuRuntime() {
+  if (gpuInstall.phase === 'running') return;
+  gpuInstall.phase = 'running';
+  gpuInstall.progress = 0;
+  gpuInstall.detail = 'onnxruntime CUDA provider';
+  gpuInstall.error = '';
+  const dirs = gpuDirs();
+  const work = join(dshHome(), 'dsh-english-reader', 'vendor', 'work');
+  try {
+    await mkdir(join(dirs.ort), { recursive: true });
+    await mkdir(join(dirs.cuda), { recursive: true });
+    await mkdir(work, { recursive: true });
+    if (!existsSync(join(dirs.ort, 'libonnxruntime_providers_cuda.so'))) {
+      const url = await wheelUrl('onnxruntime-gpu', '1.21.0');
+      const file = join(work, 'onnxruntime-gpu.whl');
+      const response = await fetch(url, { signal: AbortSignal.timeout(900000) });
+      if (!response.ok) throw new Error(`onnxruntime-gpu download failed: ${response.status}`);
+      await writeFile(file, Buffer.from(await response.arrayBuffer()));
+      gpuInstall.progress = 0.5;
+      const target = join(work, 'ort');
+      await mkdir(target, { recursive: true });
+      await run('python3', ['-m', 'zipfile', '-e', file, target]);
+      const capi = join(target, 'onnxruntime', 'capi');
+      await run('sh', ['-c', `cp -a ${JSON.stringify(capi)}/libonnxruntime_providers_*.so ${JSON.stringify(dirs.ort)}/ 2>/dev/null || true`]);
+      if (!existsSync(join(dirs.ort, 'libonnxruntime_providers_cuda.so'))) {
+        throw new Error('the CUDA provider is missing after extraction');
+      }
+    }
+    gpuInstall.progress = 0.6;
+    if (!existsSync(join(dirs.cuda, 'libcudart.so.12'))) {
+      let done = 0;
+      for (const [name] of CUDA_WHEELS) {
+        gpuInstall.detail = `CUDA runtime: ${name}`;
+        const url = await wheelUrl(name);
+        const file = join(work, `${name}.whl`);
+        const response = await fetch(url, { signal: AbortSignal.timeout(600000) });
+        if (!response.ok) throw new Error(`${name} download failed: ${response.status}`);
+        await writeFile(file, Buffer.from(await response.arrayBuffer()));
+        const target = join(work, name);
+        await mkdir(target, { recursive: true });
+        await run('python3', ['-m', 'zipfile', '-e', file, target]);
+        // wheels keep the libraries under nvidia/<component>/lib
+        await run('sh', ['-c', `cp -a ${JSON.stringify(target)}/nvidia/*/lib/. ${JSON.stringify(dirs.cuda)}/ 2>/dev/null || true`]);
+        done += 1;
+        gpuInstall.progress = 0.6 + (0.38 * done) / CUDA_WHEELS.length;
+      }
+    }
+    gpuInstall.progress = 1;
+    gpuInstall.phase = 'done';
+    gpuInstall.detail = '';
+  } catch (error) {
+    gpuInstall.phase = 'error';
+    gpuInstall.error = error instanceof Error ? error.message : String(error);
+  } finally {
+    void rm(work, { recursive: true, force: true }).catch(() => {});
+  }
+}
 
 /**
  * Which compute devices this machine can offer.
@@ -706,6 +795,7 @@ function localStatus() {
     deviceFallback: local.deviceFallback ?? '',
     lastMs: local.lastMs ?? 0,
     devices: probeDevices(),
+    gpuInstall: { ...gpuInstall },
     /** Where the bundled model lives on disk, so the panel can show it. */
     dir: modelDir(),
     voices: LOCAL_VOICES,
@@ -1415,6 +1505,21 @@ export function apply(ctx, config) {
       return Response.json(localStatus(), { headers: { 'cache-control': 'no-store' } });
     },
   }), 'english-reader: local status route');
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: PATHS.gpuInstall,
+    /** One click installs the CUDA runtime; poll /local/status for progress. */
+    handler: async (request, response) => {
+      if (request.method !== 'POST') {
+        response.writeHead(405, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      if (gpuInstall.phase !== 'running') void installGpuRuntime();
+      response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+        .end(JSON.stringify({ ok: true, gpuInstall }));
+    },
+  }), 'english-reader: GPU runtime install');
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',

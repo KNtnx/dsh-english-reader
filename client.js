@@ -20,6 +20,7 @@ window.__ModuleLoader__.load({
     const TTS_PATH = '/api-dsh-english-reader/tts'
     const LOCAL_STATUS = '/api-dsh-english-reader/local/status'
     const LOCAL_DEVICE = '/api-dsh-english-reader/local/device'
+    const LOCAL_GPU = '/api-dsh-english-reader/local/gpu'
     const LOCAL_INSTALL = '/api-dsh-english-reader/local/install'
     const VALIDATE = '/api-dsh-english-reader/tts/validate'
     const MODELS = '/api-dsh-english-reader/tts/models'
@@ -175,7 +176,9 @@ window.__ModuleLoader__.load({
         'device.auto': 'Auto (GPU when possible)',
         'device.gpu': 'GPU (CUDA)',
         'device.unavailable': 'unavailable',
-        'device.hint': 'GPU needs the CUDA runtime:',
+        'device.hint': 'GPU needs the CUDA runtime (about 300 MB):',
+        'device.install': 'Download the GPU runtime',
+        'device.downloading': 'Downloading',
         'device.active': 'Running on',
         'source.label': 'Speech source',
         'source.edge.short': 'Edge',
@@ -410,7 +413,9 @@ window.__ModuleLoader__.load({
         'device.auto': '自动（有 GPU 就用）',
         'device.gpu': 'GPU（CUDA）',
         'device.unavailable': '不可用',
-        'device.hint': 'GPU 需要 CUDA 运行时：',
+        'device.hint': 'GPU 需要 CUDA 运行时（约 300MB）：',
+        'device.install': '下载 GPU 运行库',
+        'device.downloading': '正在下载',
         'device.active': '当前使用',
         'source.label': 'TTS 来源',
         'source.edge.short': 'Edge',
@@ -1411,6 +1416,14 @@ window.__ModuleLoader__.load({
           modelPath: activeSource.modelPath ?? '',
         }
       })
+
+      /** Ask the host to download the CUDA runtime; progress shows in the same row. */
+      const installGpu = useCallback(async () => {
+        try {
+          await fetch(LOCAL_GPU, { method: 'POST' })
+        } catch { /* the status poll reports the failure */ }
+        void refreshModel()
+      }, [])
 
       /** Switch the local engine between CPU and GPU; the host restarts its worker. */
       const chooseDevice = useCallback(async (value) => {
@@ -2939,6 +2952,7 @@ window.__ModuleLoader__.load({
       const devices = Array.isArray(model?.devices) ? model.devices : [];
       const gpuDevice = devices.find((entry) => entry.id === 'cuda');
       const activeDevice = model?.activeDevice === 'cuda' ? 'GPU' : 'CPU'
+      const gpuPhase = model?.gpuInstall?.phase ?? 'idle'
       const deviceNote = model?.deviceFallback !== undefined && model.deviceFallback !== ''
         ? ` · GPU 不可用：${String(model.deviceFallback).slice(0, 60)}`
         : model?.lastMs > 0 ? ` · ${Math.round(model.lastMs)} ms/句` : ''
@@ -3047,7 +3061,18 @@ window.__ModuleLoader__.load({
                 }, label)))),
                 gpuDevice !== undefined && gpuDevice.ready === true
                   ? null
-                  : h('p', { className: 'er-fine' }, `${t('device.hint')} ${gpuDevice?.reason ?? ''}`),
+                  : h('div', { className: 'er-device-install' },
+                    h('p', { className: 'er-fine' }, `${t('device.hint')} ${gpuDevice?.reason ?? ''}`),
+                    h('button', {
+                      type: 'button', className: 'er-add er-add-plain',
+                      disabled: gpuPhase === 'running',
+                      onClick: () => { void installGpu() },
+                    }, gpuPhase === 'running'
+                      ? `${t('device.downloading')} ${Math.round((model?.gpuInstall?.progress ?? 0) * 100)}%`
+                      : t('device.install')),
+                    gpuPhase === 'error'
+                      ? h('p', { className: 'er-fine er-fine-err' }, String(model?.gpuInstall?.error ?? '').slice(0, 140))
+                      : null),
                 h('p', { className: 'er-fine' }, `${t('device.active')} ${activeDevice}`)) : null,
               provider === 'local' ? modelNote : null),
             h(Section, { title: t('settings.voices'), open: sections.voice === true, onToggle: () => toggleSection('voice') },
@@ -3764,6 +3789,7 @@ window.__ModuleLoader__.load({
 .er-field{display:flex;flex-direction:column;gap:3px;margin-top:8px}
 .er-field-label{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#666)}
 .er-device{display:flex;flex-direction:column;gap:6px;margin-top:6px}
+.er-device-install{display:flex;flex-direction:column;gap:6px;align-items:flex-start}
 .er-pair{display:flex;gap:8px}
 .er-pair > .er-field{flex:1;min-width:0}
 .er-input{height:28px;width:100%;min-width:0;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-xs,5px);background:transparent;color:inherit;font:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px)}
