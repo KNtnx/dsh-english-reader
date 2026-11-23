@@ -174,6 +174,7 @@ window.__ModuleLoader__.load({
         'engine.state': 'State',
         'device.label': 'Compute',
         'device.auto': 'Auto (GPU when possible)',
+        'device.cpu': 'CPU only',
         'device.gpu': 'GPU (CUDA)',
         'device.unavailable': 'unavailable',
         'device.hint': 'GPU needs the CUDA runtime (about 300 MB):',
@@ -411,6 +412,7 @@ window.__ModuleLoader__.load({
         'engine.state': '状态',
         'device.label': '计算设备',
         'device.auto': '自动（有 GPU 就用）',
+        'device.cpu': '仅 CPU',
         'device.gpu': 'GPU（CUDA）',
         'device.unavailable': '不可用',
         'device.hint': 'GPU 需要 CUDA 运行时（约 300MB）：',
@@ -1117,7 +1119,7 @@ window.__ModuleLoader__.load({
       const [settingsOpen, setSettingsOpen] = useState(false)
       /** Which settings sections are expanded; the choice is remembered. */
       /** Compute device for the local engine: auto, or insist on CUDA. */
-      const [localDevice, setLocalDevice] = useState(() => (initial.localDevice === 'cuda' ? 'cuda' : 'auto'))
+      const [localDevice, setLocalDevice] = useState(() => (['cuda', 'cpu'].includes(initial.localDevice) ? initial.localDevice : 'auto'))
       const [sections, setSections] = useState(() => {
         const stored = initial.sections;
         const base = { engine: true, voice: false, dict: false, trans: false };
@@ -1427,7 +1429,7 @@ window.__ModuleLoader__.load({
 
       /** Switch the local engine between CPU and GPU; the host restarts its worker. */
       const chooseDevice = useCallback(async (value) => {
-        const wanted = value === 'cuda' ? 'cuda' : 'auto'
+        const wanted = ['cuda', 'cpu'].includes(value) ? value : 'auto'
         setLocalDevice(wanted)
         try {
           await fetch(LOCAL_DEVICE, {
@@ -3053,6 +3055,7 @@ window.__ModuleLoader__.load({
                   onChange: (event) => { void chooseDevice(event.target.value) },
                 }, [
                   ['auto', t('device.auto')],
+                  ['cpu', t('device.cpu')],
                   ['cuda', gpuDevice !== undefined && gpuDevice.ready === true
                     ? t('device.gpu')
                     : `${t('device.gpu')} — ${t('device.unavailable')}`],

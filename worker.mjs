@@ -27,7 +27,7 @@ const require = createRequire(import.meta.url)
 const MODEL_ID = process.env.ER_MODEL_ID ?? 'onnx-community/Kokoro-82M-v1.0-ONNX'
 const MODEL_DTYPE = process.env.ER_MODEL_DTYPE ?? 'q8'
 /** `auto` tries the GPU and falls back on its own; `cuda` insists. */
-let DEVICE_CHOICE = process.env.ER_DEVICE === 'cuda' ? 'cuda' : 'auto'
+let DEVICE_CHOICE = ['cuda', 'cpu'].includes(process.env.ER_DEVICE) ? process.env.ER_DEVICE : 'auto'
 /** Reported back with every clip so the panel can show what actually ran. */
 let activeDevice = 'cpu'
 const MODEL_DIR = process.env.ER_MODEL_DIR ?? ''

@@ -89,7 +89,7 @@ function gpuDirs() {
   };
 }
 
-let deviceChoice = process.env.DSH_ENGLISH_READER_DEVICE === 'cuda' ? 'cuda' : 'auto';
+let deviceChoice = ['cuda', 'cpu'].includes(process.env.DSH_ENGLISH_READER_DEVICE) ? process.env.DSH_ENGLISH_READER_DEVICE : 'auto';
 
 /** Progress of the one-click GPU runtime download. */
 const gpuInstall = { phase: 'idle', progress: 0, detail: '', error: '' };
@@ -165,6 +165,8 @@ async function installGpuRuntime() {
         gpuInstall.progress = 0.6 + (0.38 * done) / CUDA_WHEELS.length;
       }
     }
+    // dlopen resolves the provider's own dependencies from its directory first.
+    await run('sh', ['-c', `cp -af ${JSON.stringify(dirs.cuda)}/*.so* ${JSON.stringify(dirs.ort)}/ 2>/dev/null || true`]);
     gpuInstall.progress = 1;
     gpuInstall.phase = 'done';
     // The library path is read at process start, so the worker must be rebuilt.
@@ -1543,7 +1545,7 @@ export function apply(ctx, config) {
       }
       let body;
       try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') ?? '{}'); } catch { body = {}; }
-      const wanted = body?.device === 'cuda' ? 'cuda' : 'auto';
+      const wanted = ['cuda', 'cpu'].includes(body?.device) ? body.device : 'auto';
       if (wanted === 'cuda' && !probeDevices().some((entry) => entry.id === 'cuda' && entry.ready)) {
         response.writeHead(409, { 'content-type': 'application/json' })
           .end(JSON.stringify({ error: 'GPU is not available', devices: probeDevices() }));
