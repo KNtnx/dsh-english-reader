@@ -996,6 +996,8 @@ window.__ModuleLoader__.load({
       const [draftProtocol, setDraftProtocol] = useState('auto')
       const [draftKey, setDraftKey] = useState('')
       const [edgeA, setEdgeA] = useState(() => pickVoice(initial.edgeA, EDGE_VOICES, EDGE_VOICES[0].id))
+      const [bundledA, setBundledA] = useState(() => pickVoice(initial.bundledA, LOCAL_VOICES, LOCAL_VOICES[0].id))
+      const [bundledB, setBundledB] = useState(() => pickVoice(initial.bundledB, LOCAL_VOICES, LOCAL_VOICES[3]?.id ?? LOCAL_VOICES[0].id))
       const [edgeB, setEdgeB] = useState(() => pickVoice(initial.edgeB, EDGE_VOICES, EDGE_VOICES[1].id))
       const [rate, setRate] = useState(() => pickRate(initial.rate))
       const [loop, setLoop] = useState(() => initial.loop === true)
@@ -1316,8 +1318,8 @@ window.__ModuleLoader__.load({
             modelPath: '',
             bundledName: t('source.local.model'),
             bundled: true,
-            voiceA: LOCAL_VOICES[0]?.id ?? '',
-            voiceB: LOCAL_VOICES[3]?.id ?? LOCAL_VOICES[0]?.id ?? '',
+            voiceA: bundledA,
+            voiceB: bundledB,
           }]
           : []),
         ...extraSources.filter((entry) => entry.kind === 'local'),
@@ -1334,7 +1336,7 @@ window.__ModuleLoader__.load({
           voiceA: entry.voiceA,
           voiceB: entry.voiceB,
         })),
-      ], [extraSources, apiSources, localeId, modelReady, modelBusy])
+      ], [extraSources, apiSources, localeId, modelReady, modelBusy, bundledA, bundledB])
       const activeSource = sources.find((entry) => entry.id === activeSourceId) ?? sources[0]
       /** The value the host understands: api sources are sent as `custom`. */
       const provider = activeSource.kind === 'api' ? 'custom' : activeSource.kind
@@ -1355,6 +1357,11 @@ window.__ModuleLoader__.load({
           return
         }
         const field = slot === 0 ? 'voiceA' : 'voiceB'
+        if (activeSource.bundled === true) {
+          if (slot === 0) setBundledA(value)
+          else setBundledB(value)
+          return
+        }
         if (activeSource.kind === 'api') {
           // Endpoint sources live on the host, so the edit is written back there.
           const hostId = activeSource.hostId
@@ -1737,11 +1744,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections,
+            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
