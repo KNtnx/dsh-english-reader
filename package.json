@@ -49,5 +49,8 @@
     "edge-tts",
     "kokoro"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "setup:gpu": "node tools/setup-gpu.mjs"
+  }
 }

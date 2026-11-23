@@ -19,6 +19,7 @@ window.__ModuleLoader__.load({
     const LEGACY_KEY = 'dsh-english-reader:state:v1'
     const TTS_PATH = '/api-dsh-english-reader/tts'
     const LOCAL_STATUS = '/api-dsh-english-reader/local/status'
+    const LOCAL_DEVICE = '/api-dsh-english-reader/local/device'
     const LOCAL_INSTALL = '/api-dsh-english-reader/local/install'
     const VALIDATE = '/api-dsh-english-reader/tts/validate'
     const MODELS = '/api-dsh-english-reader/tts/models'
@@ -170,6 +171,12 @@ window.__ModuleLoader__.load({
         'engine.connection': 'Connection',
         'engine.connection.edge': 'Needs a network · text is sent to Microsoft',
         'engine.state': 'State',
+        'device.label': 'Compute',
+        'device.auto': 'Auto (GPU when possible)',
+        'device.gpu': 'GPU (CUDA)',
+        'device.unavailable': 'unavailable',
+        'device.hint': 'GPU needs the CUDA runtime:',
+        'device.active': 'Running on',
         'source.label': 'Speech source',
         'source.edge.short': 'Edge',
         'source.local.short': 'Local model',
@@ -399,6 +406,12 @@ window.__ModuleLoader__.load({
         'engine.connection': '连接',
         'engine.connection.edge': '需要联网 · 文本发送到微软',
         'engine.state': '状态',
+        'device.label': '计算设备',
+        'device.auto': '自动（有 GPU 就用）',
+        'device.gpu': 'GPU（CUDA）',
+        'device.unavailable': '不可用',
+        'device.hint': 'GPU 需要 CUDA 运行时：',
+        'device.active': '当前使用',
         'source.label': 'TTS 来源',
         'source.edge.short': 'Edge',
         'source.local.short': '本地模型',
@@ -1098,6 +1111,8 @@ window.__ModuleLoader__.load({
       const [translateError, setTranslateError] = useState('')
       const [settingsOpen, setSettingsOpen] = useState(false)
       /** Which settings sections are expanded; the choice is remembered. */
+      /** Compute device for the local engine: auto, or insist on CUDA. */
+      const [localDevice, setLocalDevice] = useState(() => (initial.localDevice === 'cuda' ? 'cuda' : 'auto'))
       const [sections, setSections] = useState(() => {
         const stored = initial.sections;
         const base = { engine: true, voice: false, dict: false, trans: false };
@@ -1396,6 +1411,20 @@ window.__ModuleLoader__.load({
           modelPath: activeSource.modelPath ?? '',
         }
       })
+
+      /** Switch the local engine between CPU and GPU; the host restarts its worker. */
+      const chooseDevice = useCallback(async (value) => {
+        const wanted = value === 'cuda' ? 'cuda' : 'auto'
+        setLocalDevice(wanted)
+        try {
+          await fetch(LOCAL_DEVICE, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ device: wanted }),
+          })
+        } catch { /* the status line reports what actually happened */ }
+        void refreshModel()
+      }, [])
 
       /** Read the local provider's state. */
       const refreshModel = useCallback(async () => {
@@ -1744,11 +1773,11 @@ window.__ModuleLoader__.load({
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
+            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, localDevice,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, localDevice])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -2907,6 +2936,12 @@ window.__ModuleLoader__.load({
         h('span', { className: 'er-fact-label' }, label),
         h('span', { className: 'er-fact-value' }, value))
 
+      const devices = Array.isArray(model?.devices) ? model.devices : [];
+      const gpuDevice = devices.find((entry) => entry.id === 'cuda');
+      const activeDevice = model?.activeDevice === 'cuda' ? 'GPU' : 'CPU'
+      const deviceNote = model?.deviceFallback !== undefined && model.deviceFallback !== ''
+        ? ` · GPU 不可用：${String(model.deviceFallback).slice(0, 60)}`
+        : model?.lastMs > 0 ? ` · ${Math.round(model.lastMs)} ms/句` : ''
       const localState = model === null ? '…'
         : modelBusy ? (model?.phase === 'loading' ? t('local.loading') : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) }))
           : modelReady ? (modelLoaded ? t('local.ready') : t('local.cached'))
@@ -2923,8 +2958,9 @@ window.__ModuleLoader__.load({
         : provider === 'local' ? (localFolder !== '' ? shortPath(localFolder) : t('engine.backend.local'))
           : (activeSource.baseUrl === undefined || activeSource.baseUrl === '' ? t('custom.noEndpoint') : activeSource.baseUrl)
       const sourceState = provider === 'edge' ? t('state.online')
-        : provider === 'local' ? localState
-          : (activeSource.baseUrl === undefined || activeSource.baseUrl === ''
+        : provider === 'local' ? `${localState}${deviceNote}`
+          : (activeSource.baseUrl
+            === undefined || activeSource.baseUrl === ''
             ? t('state.notConfigured')
             : t('state.configured'))
 
@@ -2997,6 +3033,22 @@ window.__ModuleLoader__.load({
                 factRow(t('engine.backend'), sourceBackend),
                 factRow(provider === 'local' ? t('engine.folder') : t('engine.connection'), sourceLink),
                 factRow(t('engine.state'), sourceState)),
+              provider === 'local' ? h('div', { className: 'er-device' },
+                field(t('device.label'), h('select', {
+                  className: 'er-select', value: localDevice,
+                  onChange: (event) => { void chooseDevice(event.target.value) },
+                }, [
+                  ['auto', t('device.auto')],
+                  ['cuda', gpuDevice !== undefined && gpuDevice.ready === true
+                    ? t('device.gpu')
+                    : `${t('device.gpu')} — ${t('device.unavailable')}`],
+                ].map(([id, label]) => h('option', {
+                  key: id, value: id, disabled: id === 'cuda' && !(gpuDevice !== undefined && gpuDevice.ready === true),
+                }, label)))),
+                gpuDevice !== undefined && gpuDevice.ready === true
+                  ? null
+                  : h('p', { className: 'er-fine' }, `${t('device.hint')} ${gpuDevice?.reason ?? ''}`),
+                h('p', { className: 'er-fine' }, `${t('device.active')} ${activeDevice}`)) : null,
               provider === 'local' ? modelNote : null),
             h(Section, { title: t('settings.voices'), open: sections.voice === true, onToggle: () => toggleSection('voice') },
               activeSource.kind !== 'api' ? null : h('datalist', { id: 'er-voice-list' },
@@ -3711,6 +3763,7 @@ window.__ModuleLoader__.load({
 .er-seg-btn[aria-checked='true']{background:var(--dsw-alias-bg-layer-1,#fff);box-shadow:var(--dsw-elevation-soft,0 1px 2px rgba(0,0,0,.08));color:var(--dsw-alias-label-primary,#111);font-weight:600}
 .er-field{display:flex;flex-direction:column;gap:3px;margin-top:8px}
 .er-field-label{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#666)}
+.er-device{display:flex;flex-direction:column;gap:6px;margin-top:6px}
 .er-pair{display:flex;gap:8px}
 .er-pair > .er-field{flex:1;min-width:0}
 .er-input{height:28px;width:100%;min-width:0;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-xs,5px);background:transparent;color:inherit;font:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px)}

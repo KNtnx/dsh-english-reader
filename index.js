@@ -16,6 +16,7 @@
  */
 
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
@@ -39,6 +40,7 @@ const PATHS = {
   tts: '/api-dsh-english-reader/tts',
   status: '/api-dsh-english-reader/local/status',
   install: '/api-dsh-english-reader/local/install',
+  device: '/api-dsh-english-reader/local/device',
   ttsSources: '/api-dsh-english-reader/tts/sources',
   validate: '/api-dsh-english-reader/tts/validate',
   models: '/api-dsh-english-reader/tts/models',
@@ -74,6 +76,40 @@ function modelDir() {
 }
 
 /** Where the panel's speech sources are kept: a small JSON file, readable by its owner only. */
+/** Optional GPU bits: ORT's CUDA provider and the CUDA 12 runtime it needs. */
+function gpuDirs() {
+  const root = join(dshHome(), 'dsh-english-reader');
+  return {
+    ort: join(root, 'vendor', 'ort-gpu'),
+    cuda: join(root, 'vendor', 'cuda12'),
+  };
+}
+
+let deviceChoice = process.env.DSH_ENGLISH_READER_DEVICE === 'cuda' ? 'cuda' : 'auto';
+
+/**
+ * Which compute devices this machine can offer.
+ *
+ * CUDA needs three things at once: an NVIDIA GPU, ORT's CUDA provider library
+ * and the CUDA 12 runtime the provider was built against. Missing any of them
+ * is reported as a reason rather than a silent CPU fallback.
+ */
+function probeDevices() {
+  const dirs = gpuDirs();
+  const hasGpu = existsSync('/dev/nvidia0') || existsSync('/proc/driver/nvidia/version');
+  const hasProvider = existsSync(join(dirs.ort, 'libonnxruntime_providers_cuda.so'));
+  const hasCuda = [ dirs.cuda, '/usr/local/cuda-12/lib64', '/usr/local/cuda/lib64' ]
+    .some((dir) => existsSync(join(dir, 'libcudart.so.12')));
+  let reason = '';
+  if (!hasGpu) reason = 'no NVIDIA GPU was found';
+  else if (!hasProvider) reason = 'the CUDA provider for onnxruntime is not installed';
+  else if (!hasCuda) reason = 'the CUDA 12 runtime is missing';
+  return [
+    { id: 'cpu', ready: true, reason: '' },
+    { id: 'cuda', ready: reason === '', reason },
+  ];
+}
+
 function sourcesFile() {
   return join(dshHome(), 'dsh-english-reader', 'sources.json');
 }
@@ -523,6 +559,13 @@ let nextId = 1;
 const pending = new Map();
 let stdoutBuffer = '';
 
+/** Drop the worker so the next request loads it with the current device. */
+function stopWorker() {
+  if (worker === null) return;
+  worker.kill();
+  worker = null;
+}
+
 /** Start the worker process. */
 function startWorker() {
   if (worker !== null) return worker;
@@ -535,6 +578,10 @@ function startWorker() {
       ER_MODEL_DIR: modelDir(),
       ER_MODEL_ID: MODEL_ID,
       ER_MODEL_DTYPE: MODEL_DTYPE,
+      ER_DEVICE: deviceChoice,
+      LD_LIBRARY_PATH: [gpuDirs().ort, gpuDirs().cuda, process.env.LD_LIBRARY_PATH]
+        .filter((part) => typeof part === 'string' && part !== '')
+        .join(':'),
     },
     stdio: ['pipe', 'pipe', 'pipe'],
   });
@@ -609,6 +656,10 @@ function applyEvent(event) {
   if (event.event === 'ready') {
     if (local.phase === 'absent' && local.onDisk === true) local.phase = 'cached';
   }
+  if (event.event === 'device') {
+    local.activeDevice = String(event.device ?? 'cpu');
+    local.deviceFallback = String(event.reason ?? '');
+  }
 }
 
 /**
@@ -650,6 +701,11 @@ function localStatus() {
     error: local.error,
     model: MODEL_ID,
     dtype: MODEL_DTYPE,
+    device: deviceChoice,
+    activeDevice: local.activeDevice ?? 'cpu',
+    deviceFallback: local.deviceFallback ?? '',
+    lastMs: local.lastMs ?? 0,
+    devices: probeDevices(),
     /** Where the bundled model lives on disk, so the panel can show it. */
     dir: modelDir(),
     voices: LOCAL_VOICES,
@@ -929,6 +985,10 @@ async function synthesize(provider, text, voice, custom, modelPath) {
     }
   }
   const reply = await ask({ op: provider, text, voice, modelPath }, provider === 'local' ? 180000 : 45000);
+  if (provider === 'local') {
+    local.lastMs = Number(reply.ms ?? 0);
+    if (typeof reply.device === 'string') local.activeDevice = reply.device;
+  }
   const clip = {
     body: Buffer.from(reply.audio, 'base64'),
     type: reply.type ?? 'audio/mpeg',
@@ -1355,6 +1415,38 @@ export function apply(ctx, config) {
       return Response.json(localStatus(), { headers: { 'cache-control': 'no-store' } });
     },
   }), 'english-reader: local status route');
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: PATHS.device,
+    /** Choose the compute device; the worker restarts with the new env. */
+    handler: async (request, response) => {
+      if (request.method !== 'POST') {
+        response.writeHead(405, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'method not allowed' }));
+        return;
+      }
+      const chunks = [];
+      try {
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      } catch {
+        response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'unreadable body' }));
+        return;
+      }
+      let body;
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8') ?? '{}'); } catch { body = {}; }
+      const wanted = body?.device === 'cuda' ? 'cuda' : 'auto';
+      if (wanted === 'cuda' && !probeDevices().some((entry) => entry.id === 'cuda' && entry.ready)) {
+        response.writeHead(409, { 'content-type': 'application/json' })
+          .end(JSON.stringify({ error: 'GPU is not available', devices: probeDevices() }));
+        return;
+      }
+      const changed = wanted !== deviceChoice;
+      deviceChoice = wanted;
+      if (changed) stopWorker();
+      response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+        .end(JSON.stringify({ ok: true, device: deviceChoice, restarted: changed, devices: probeDevices() }));
+    },
+  }), 'english-reader: compute device');
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
