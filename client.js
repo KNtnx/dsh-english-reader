@@ -1675,6 +1675,7 @@ window.__ModuleLoader__.load({
 
       const step = useCallback((delta) => { void playAt(stateRef.current.index + delta) }, [playAt])
 
+
       // The audio element is mounted for the panel's whole life, so these
       // listeners stay attached across view switches.
       useEffect(() => {
@@ -1780,6 +1781,26 @@ window.__ModuleLoader__.load({
         }
         setStatus('idle')
       }, [])
+
+      /** The voice and engine the loaded clip was made with. */
+      const spokenWith = useRef({ voiceA: '', voiceB: '', provider: '' })
+      const spokenReady = useRef(false)
+
+      // Changing who reads mid-sentence used to do nothing until the next
+      // sentence started, because the clip was already downloaded and playing.
+      useEffect(() => {
+        const previous = spokenWith.current
+        spokenWith.current = { voiceA, voiceB, provider: activeSource.id }
+        if (!spokenReady.current) { spokenReady.current = true; return }
+        if (previous.voiceA === voiceA && previous.voiceB === voiceB && previous.provider === activeSource.id) return
+        const live = stateRef.current
+        if (live.sentences.length === 0) return
+        if (live.status === 'playing') { void playAt(live.index); return }
+        // Nothing is speaking right now: drop the stale clip so the next play
+        // synthesizes with the new voice instead of replaying the old one.
+        if (live.status === 'paused') cancelPlayback()
+      }, [voiceA, voiceB, activeSource.id, playAt, cancelPlayback])
+
 
       /** Translate every sentence of the open dialogue in one request. */
       const translateActive = useCallback(async () => {
