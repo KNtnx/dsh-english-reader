@@ -26,10 +26,6 @@ const require = createRequire(import.meta.url)
 
 const MODEL_ID = process.env.ER_MODEL_ID ?? 'onnx-community/Kokoro-82M-v1.0-ONNX'
 const MODEL_DTYPE = process.env.ER_MODEL_DTYPE ?? 'q8'
-/** `auto` tries the GPU and falls back on its own; `cuda` insists. */
-let DEVICE_CHOICE = ['cuda', 'cpu'].includes(process.env.ER_DEVICE) ? process.env.ER_DEVICE : 'auto'
-/** Reported back with every clip so the panel can show what actually ran. */
-let activeDevice = 'cpu'
 const MODEL_DIR = process.env.ER_MODEL_DIR ?? ''
 
 /** @type {{ MsEdgeTTS: any, OUTPUT_FORMAT: any } | null} */
@@ -112,26 +108,11 @@ function loadKokoro(modelPath = '') {
       env.cacheDir = MODEL_DIR === '' ? env.cacheDir : MODEL_DIR
     }
     emit({ event: 'cache', dir: String(env.cacheDir ?? '') })
-    // fp16 is the realistic GPU dtype; q8 stays the CPU default.
-    const load = (device) => KokoroTTS.from_pretrained(source, {
-      dtype: device === 'cuda' ? 'fp16' : MODEL_DTYPE,
-      device,
-      progress_callback: device === 'cuda' ? undefined : onProgress,
+    kokoro = await KokoroTTS.from_pretrained(source, {
+      dtype: MODEL_DTYPE,
+      device: 'cpu',
+      progress_callback: onProgress,
     })
-    if (DEVICE_CHOICE === 'auto' || DEVICE_CHOICE === 'cuda') {
-      try {
-        kokoro = await load('cuda')
-        activeDevice = 'cuda'
-      } catch (error) {
-        // A GPU that cannot load must not take the local engine down with it.
-        emit({ event: 'device', device: 'cpu', reason: error instanceof Error ? error.message : String(error) })
-        kokoro = await load('cpu')
-        activeDevice = 'cpu'
-      }
-    } else {
-      kokoro = await load('cpu')
-      activeDevice = 'cpu'
-    }
     kokoroSource = source
     downloads.clear()
     emit({ event: 'phase', phase: 'ready' })
@@ -265,23 +246,9 @@ async function handle(request) {
   }
   if (request.op === 'local') {
     const instance = await loadKokoro(typeof request.modelPath === 'string' ? request.modelPath : '')
-    const startedAt = Date.now()
-    let generated
-    try {
-      generated = await instance.generate(request.text, { voice: request.voice })
-    } catch (error) {
-      // The CUDA provider can load and still fail at run time; CPU must catch it.
-      if (activeDevice !== 'cuda') throw error
-      emit({ event: 'device', device: 'cpu', reason: error instanceof Error ? error.message : String(error) })
-      kokoro = null
-      kokoroSource = null
-      DEVICE_CHOICE = 'auto'
-      const fallback = await loadKokoro(typeof request.modelPath === 'string' ? request.modelPath : '')
-      activeDevice = 'cpu'
-      generated = await fallback.generate(request.text, { voice: request.voice })
-    }
+    const generated = await instance.generate(request.text, { voice: request.voice })
     const wav = toWav16(generated.audio, generated.sampling_rate)
-    return { ok: true, type: 'audio/wav', audio: wav.toString('base64'), device: activeDevice, ms: Date.now() - startedAt }
+    return { ok: true, type: 'audio/wav', audio: wav.toString('base64') }
   }
   if (request.op === 'preload') {
     await loadKokoro(typeof request.modelPath === 'string' ? request.modelPath : '')
