@@ -167,6 +167,8 @@ async function installGpuRuntime() {
     }
     gpuInstall.progress = 1;
     gpuInstall.phase = 'done';
+    // The library path is read at process start, so the worker must be rebuilt.
+    stopWorker();
     gpuInstall.detail = '';
   } catch (error) {
     gpuInstall.phase = 'error';
@@ -187,8 +189,10 @@ function probeDevices() {
   const dirs = gpuDirs();
   const hasGpu = existsSync('/dev/nvidia0') || existsSync('/proc/driver/nvidia/version');
   const hasProvider = existsSync(join(dirs.ort, 'libonnxruntime_providers_cuda.so'));
-  const hasCuda = [ dirs.cuda, '/usr/local/cuda-12/lib64', '/usr/local/cuda/lib64' ]
-    .some((dir) => existsSync(join(dir, 'libcudart.so.12')));
+  // The provider also needs cublasLt, which the runtime wheels carry.
+  const hasLib = (name) => [ dirs.cuda, '/usr/local/cuda-12/lib64', '/usr/local/cuda/lib64' ]
+    .some((dir) => existsSync(join(dir, name)));
+  const hasCuda = hasLib('libcudart.so.12') && hasLib('libcublasLt.so.12');
   let reason = '';
   if (!hasGpu) reason = 'no NVIDIA GPU was found';
   else if (!hasProvider) reason = 'the CUDA provider for onnxruntime is not installed';

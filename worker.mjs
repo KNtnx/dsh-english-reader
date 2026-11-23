@@ -27,7 +27,7 @@ const require = createRequire(import.meta.url)
 const MODEL_ID = process.env.ER_MODEL_ID ?? 'onnx-community/Kokoro-82M-v1.0-ONNX'
 const MODEL_DTYPE = process.env.ER_MODEL_DTYPE ?? 'q8'
 /** `auto` tries the GPU and falls back on its own; `cuda` insists. */
-const DEVICE_CHOICE = process.env.ER_DEVICE === 'cuda' ? 'cuda' : 'auto'
+let DEVICE_CHOICE = process.env.ER_DEVICE === 'cuda' ? 'cuda' : 'auto'
 /** Reported back with every clip so the panel can show what actually ran. */
 let activeDevice = 'cpu'
 const MODEL_DIR = process.env.ER_MODEL_DIR ?? ''
@@ -123,7 +123,7 @@ function loadKokoro(modelPath = '') {
         kokoro = await load('cuda')
         activeDevice = 'cuda'
       } catch (error) {
-        if (DEVICE_CHOICE === 'cuda') throw error
+        // A GPU that cannot load must not take the local engine down with it.
         emit({ event: 'device', device: 'cpu', reason: error instanceof Error ? error.message : String(error) })
         kokoro = await load('cpu')
         activeDevice = 'cpu'
@@ -266,7 +266,20 @@ async function handle(request) {
   if (request.op === 'local') {
     const instance = await loadKokoro(typeof request.modelPath === 'string' ? request.modelPath : '')
     const startedAt = Date.now()
-    const generated = await instance.generate(request.text, { voice: request.voice })
+    let generated
+    try {
+      generated = await instance.generate(request.text, { voice: request.voice })
+    } catch (error) {
+      // The CUDA provider can load and still fail at run time; CPU must catch it.
+      if (activeDevice !== 'cuda') throw error
+      emit({ event: 'device', device: 'cpu', reason: error instanceof Error ? error.message : String(error) })
+      kokoro = null
+      kokoroSource = null
+      DEVICE_CHOICE = 'auto'
+      const fallback = await loadKokoro(typeof request.modelPath === 'string' ? request.modelPath : '')
+      activeDevice = 'cpu'
+      generated = await fallback.generate(request.text, { voice: request.voice })
+    }
     const wav = toWav16(generated.audio, generated.sampling_rate)
     return { ok: true, type: 'audio/wav', audio: wav.toString('base64'), device: activeDevice, ms: Date.now() - startedAt }
   }

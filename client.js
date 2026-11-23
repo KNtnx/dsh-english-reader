@@ -1329,7 +1329,7 @@ window.__ModuleLoader__.load({
 
       const sources = useMemo(() => [
         { id: 'edge', kind: 'edge', name: t('source.edge.short'), short: t('provider.edge') },
-        ...(modelReady || modelBusy
+        ...(modelReady || modelBusy || model?.installed === true || model?.onDisk === true
           ? [{
             id: 'bundled',
             kind: 'local',
