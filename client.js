@@ -1059,7 +1059,18 @@ window.__ModuleLoader__.load({
         })))
       const [wordFilter, setWordFilter] = useState('')
       const [openWordId, setOpenWordId] = useState('')
+      /** The saved word opened in the list, and whether its entry is still loading. */
+      const [openEntry, setOpenEntry] = useState(null)
       const [openLoading, setOpenLoading] = useState(false)
+      /**
+       * The two lookups are separate on purpose. The card floats over the text
+       * and the list expands in place; when both wrote the same state, opening a
+       * saved word made the next right-click show that word instead of the one
+       * that was clicked. Each also carries a token, so an answer that arrives
+       * after a newer request is dropped instead of painted.
+       */
+      const openTokenRef = useRef(0)
+      const cardTokenRef = useRef(0)
       /** What a lookup shows: English definitions, a Chinese gloss, or both. */
       /** Two slots, one per language: each picks its own dictionary. */
       /** What the card shows: both languages, English only, or Chinese only. */
@@ -1239,17 +1250,20 @@ window.__ModuleLoader__.load({
         return { word, phonetic, senses: english, translation: chinese, source: `${dictEn}+${dictCn}` };
       }, [dictShow, dictCn, dictEn, dictModelCn, dictModelEn, resolveSource])
 
-      /** Fetch (or reuse) the entry the expansion should show right now. */
+      /** Fetch (or reuse) the entry the expanded saved word should show. */
       const loadWordEntry = useCallback(async (word) => {
+        const token = openTokenRef.current + 1
+        openTokenRef.current = token
         setOpenLoading(true)
         try {
           const entry = await resolveWord(word)
-          setCardEntry(entry);
-          setCardState(entry === null ? 'missing' : 'ready');
+          if (openTokenRef.current !== token) return
+          setOpenEntry(entry)
         } catch {
-          setCardState('failed');
+          if (openTokenRef.current !== token) return
+          setOpenEntry(null)
         } finally {
-          setOpenLoading(false)
+          if (openTokenRef.current === token) setOpenLoading(false)
         }
       }, [resolveWord])
 
@@ -1271,12 +1285,16 @@ window.__ModuleLoader__.load({
         }
       }, [settingsOpen, dictCn, dictEn, dictModelCn, dictModelEn, translateRoute, modelsByProvider])
 
-      // The open entry belongs to whichever dictionary is selected now.
+      // The open saved word follows the dictionary that is selected now. The loader
+      // is reached through a ref: its identity changes every time the cache grows,
+      // and re-running then would refetch the same word for no reason.
+      const loadWordEntryRef = useRef(loadWordEntry)
+      useEffect(() => { loadWordEntryRef.current = loadWordEntry }, [loadWordEntry])
       useEffect(() => {
-        if (openWordId === '') return
         const row = words.find((item) => item.id === openWordId)
-        if (row !== undefined) void loadWordEntry(row.word)
-      }, [dictShow, dictCn, dictEn, loadWordEntry])
+        if (row === undefined) return
+        void loadWordEntryRef.current(row.word)
+      }, [dictShow, dictCn, dictEn])
 
       // The card belongs to the document on screen; leaving that document closes it.
       useEffect(() => { setSettingsOpen(false) }, [view, activeId])
@@ -2272,13 +2290,19 @@ window.__ModuleLoader__.load({
       const lookUp = useCallback(async (raw) => {
         const word = String(raw).trim();
         if (word === '') return;
+        // A right-click right after another one must not be overwritten by the
+        // slower answer of the word before it.
+        const token = cardTokenRef.current + 1;
+        cardTokenRef.current = token;
         setCardState('loading');
         setCardError('');
         setCardEntry(null);
         try {
           const entry = await resolveWord(word);
+          if (cardTokenRef.current !== token) return;
           if (entry !== null) { setCardEntry(entry); setCardState('ready'); return; }
         } catch (error) {
+          if (cardTokenRef.current !== token) return;
           setCardState('failed');
           setCardError(error instanceof Error ? error.message : t('dict.failed'));
           return;
@@ -2296,6 +2320,7 @@ window.__ModuleLoader__.load({
             }),
           });
           const payload = await response.json().catch(() => ({}));
+          if (cardTokenRef.current !== token) return;
           const translated = Array.isArray(payload?.translations) ? payload.translations[0] : '';
           if (typeof translated === 'string' && translated !== '') {
             setCardEntry({ word, phonetic: '', senses: [], translation: [{ pos: '', def: translated }], source: 'translate' });
@@ -2304,6 +2329,7 @@ window.__ModuleLoader__.load({
           }
           setCardState('missing');
         } catch {
+          if (cardTokenRef.current !== token) return;
           setCardState('failed');
           setCardError(t('dict.failed'));
         }
@@ -2624,10 +2650,15 @@ window.__ModuleLoader__.load({
       })
 
       /** Open one saved word in place, resolving it through the current dictionary. */
+      const closeWord = () => {
+        openTokenRef.current += 1
+        setOpenWordId('')
+        setOpenEntry(null)
+        setOpenLoading(false)
+      }
       const toggleWord = (item) => {
-        if (openWordId === item.id) { setOpenWordId(''); setOpenLoading(false); return }
+        if (openWordId === item.id) { closeWord(); return }
         setOpenWordId(item.id)
-        setCardState('idle')
         void loadWordEntry(item.word)
       }
 
@@ -2645,8 +2676,8 @@ window.__ModuleLoader__.load({
             ? h('p', { className: 'er-empty' }, t('words.none'))
             : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
               const open = openWordId === item.id
-              const resolved = open && cardEntry !== null && String(cardEntry.word).toLowerCase() === String(item.word).toLowerCase()
-                ? cardEntry : null
+              const resolved = open && openEntry !== null && String(openEntry.word).toLowerCase() === String(item.word).toLowerCase()
+                ? openEntry : null
               const chinese = resolved === null || dictShow === 'en' ? [] : sensesOf(resolved.translation)
               const english = resolved === null || dictShow === 'zh' ? [] : sensesOf(resolved.senses)
               const unsupported = open && resolved !== null && chinese.length === 0 && english.length === 0
@@ -2672,7 +2703,7 @@ window.__ModuleLoader__.load({
                   h('button', {
                     type: 'button', className: 'er-entry-act',
                     title: t('words.lookup'), 'aria-label': t('words.lookup'),
-                    onClick: () => { setOpenWordId(''); openPinnedWord(item.word) },
+                    onClick: () => { closeWord(); openPinnedWord(item.word) },
                   }, glyphLine(ICON.book, 14)),
                   h('button', {
                     type: 'button', className: 'er-entry-del', title: t('words.remove'), 'aria-label': t('words.remove'),
@@ -3463,7 +3494,9 @@ window.__ModuleLoader__.load({
       const body = view === 'words' ? wordsPage
         : view === 'library' ? library
         : view === 'editor' ? editor
-          : [list, errorBar, transport]
+          // A fragment, not an array: an array of elements needs keys, and these
+          // three are never reordered.
+          : h(React.Fragment, null, list, errorBar, transport)
 
       return h('div', {
         className: 'er-root', onKeyDown, tabIndex: 0, ref: rootRef,

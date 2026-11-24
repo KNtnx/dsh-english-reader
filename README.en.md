@@ -155,11 +155,16 @@ Lookups are limited to the sentence being read, so a long article never pays for
 ## Development
 
 ```bash
-node --check index.js
-node --check client.js
-node --check worker.mjs
+npm install                       # once: react, react-dom and jsdom are devDependencies
+npm test                          # the whole suite, about a second
+node --check index.js client.js worker.mjs
 dsh plugin --profile web add link:$(pwd)
 ```
+
+The tests mount the real panel in jsdom and click it, because every bug that got
+through a manual check lived in state written by two interactions at once. What
+is covered, what is deliberately not (layout, audio, real networks), and how to
+add a test for a reported bug are in [docs/TESTING.md](docs/TESTING.md).
 
 ```
 package.json        plugin manifest (dsh.bundle.patch + dsh.client)

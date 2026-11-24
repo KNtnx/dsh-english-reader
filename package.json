@@ -19,6 +19,9 @@
     "docs",
     "icon.svg"
   ],
+  "scripts": {
+    "test": "node --test test/"
+  },
   "dependencies": {
     "kokoro-js": "^1.2.1",
     "msedge-tts": "^2.1.1"
@@ -49,5 +52,10 @@
     "edge-tts",
     "kokoro"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "devDependencies": {
+    "jsdom": "^31.0.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  }
 }
