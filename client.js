@@ -52,6 +52,8 @@ window.__ModuleLoader__.load({
     /** Sentences synthesized ahead of the one playing. */
     const PREFETCH = 3
     const SPEEDS = [0.5, 0.75, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2]
+    /** Deletions remembered, so a stale browser cannot restore them. */
+    const TOMBSTONE_LIMIT = 500
     /** How many dialogues the library keeps. */
     const LIBRARY_LIMIT = 60
 
@@ -869,21 +871,36 @@ window.__ModuleLoader__.load({
 function mergeStates(local, remote) {
   const base = local !== null && typeof local === 'object' ? local : {}
   if (remote === null || typeof remote !== 'object') return base
-  /** Union two lists by id, keeping the entry with the later stamp. */
-  const keep = (left, right, stamp) => {
+  /** `kind:id` to the moment it was deleted, from both sides. */
+  const gone = new Map()
+  for (const entry of [...(Array.isArray(base.removed) ? base.removed : []),
+    ...(Array.isArray(remote.removed) ? remote.removed : [])]) {
+    if (entry === null || typeof entry !== 'object' || typeof entry.id !== 'string') continue
+    const key = `${entry.kind}:${entry.id}`
+    gone.set(key, Math.max(gone.get(key) ?? 0, Number(entry.at) ?? 0))
+  }
+  /** Union two lists by id, keeping the later copy of each and dropping deleted ones. */
+  const keep = (left, right, kind, stamp) => {
     const out = new Map()
     for (const entry of [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]) {
       if (entry === null || typeof entry !== 'object') continue
       const id = String(entry.id ?? entry.word ?? '')
       if (id === '') continue
+      // A tombstone only beats a copy that is older than the deletion: saving
+      // the same word again afterwards is a new entry, not a resurrection.
+      if ((gone.get(`${kind}:${id}`) ?? 0) >= Number(entry[stamp] ?? 0)) continue
       const held = out.get(id)
       if (held === undefined || Number(entry[stamp] ?? 0) >= Number(held[stamp] ?? 0)) out.set(id, entry)
     }
     return [...out.values()]
   }
-  const words = keep(base.words, remote.words, 'addedAt')
+  const words = keep(base.words, remote.words, 'word', 'addedAt')
     .sort((left, right) => Number(right.addedAt ?? 0) - Number(left.addedAt ?? 0))
-  return { ...base, items: keep(base.items, remote.items, 'updatedAt'), words }
+  const tombstones = [...gone.entries()].map(([key, at]) => {
+    const split = key.indexOf(':')
+    return { kind: key.slice(0, split), id: key.slice(split + 1), at }
+  }).sort((left, right) => left.at - right.at).slice(-TOMBSTONE_LIMIT)
+  return { ...base, items: keep(base.items, remote.items, 'item', 'updatedAt'), words, removed: tombstones }
 }
 
 /** Format a byte count for the model card. */
@@ -1112,6 +1129,12 @@ function mergeStates(local, remote) {
             ? item.context
             : '',
         })))
+      /**
+       * Ids this browser deleted. A shared library cannot express a deletion by
+       * leaving an entry out — a stale copy elsewhere would put it straight back
+       * — so deletions travel as tombstones and win over any older copy.
+       */
+      const [removed, setRemoved] = useState(() => (Array.isArray(initial.removed) ? initial.removed : []))
       const [wordFilter, setWordFilter] = useState('')
       const [openWordId, setOpenWordId] = useState('')
       /** The saved word opened in the list, and whether its entry is still loading. */
@@ -1847,12 +1870,13 @@ function mergeStates(local, remote) {
 
       const persist = useCallback((override) => {
         const list = override?.items ?? items
+        const gone = override?.removed ?? removed
         const id = override?.activeId === undefined ? activeId : override.activeId
         const at = override?.index === undefined ? index : override.index
         try {
           window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
             version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
+            showTranslation, translateSource, translateModel, autoNext, words, removed: gone, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
@@ -1862,8 +1886,9 @@ function mergeStates(local, remote) {
           savedAt: Date.now(),
           items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           words,
+          removed: gone,
         })
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, removed, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -2082,6 +2107,7 @@ function mergeStates(local, remote) {
 
       const removeItem = useCallback((id) => {
         setConfirmDelete('')
+        setRemoved((current) => [...current, { kind: 'item', id, at: Date.now() }].slice(-TOMBSTONE_LIMIT))
         const next = items.filter((item) => item.id !== id)
         if (id !== activeId) {
           setItems(next)
@@ -2765,6 +2791,12 @@ function mergeStates(local, remote) {
         setOpenEntry(null)
         setOpenLoading(false)
       }
+      /** Remove a saved word here and everywhere else. */
+      const dropWord = useCallback((id) => {
+        setWords((current) => current.filter((entry) => entry.id !== id))
+        setRemoved((current) => [...current, { kind: 'word', id, at: Date.now() }].slice(-TOMBSTONE_LIMIT))
+      }, [])
+
       const toggleWord = (item) => {
         if (openWordId === item.id) { closeWord(); return }
         setOpenWordId(item.id)
@@ -2820,7 +2852,7 @@ function mergeStates(local, remote) {
                   }, glyphLine(ICON.book, 14)),
                   h('button', {
                     type: 'button', className: 'er-entry-del', title: t('words.remove'), 'aria-label': t('words.remove'),
-                    onClick: () => setWords((current) => current.filter((entry) => entry.id !== item.id)),
+                    onClick: () => dropWord(item.id),
                   }, glyph(ICON.close, 13))),
                 open
                   ? h('div', { className: 'er-wrow-body' },

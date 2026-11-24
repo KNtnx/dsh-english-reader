@@ -247,3 +247,45 @@ test('the store refuses what it cannot keep', async () => {
   assert.equal(badState.status, 400)
   assert.equal(badState.body.error, 'badState')
 })
+
+test('the host forgets what a panel deleted', async () => {
+  const route = routes.get(`${PREFIX}/store`)
+  await callHandler(route, {
+    method: 'POST',
+    body: {
+      state: {
+        savedAt: 300,
+        items: [],
+        words: [
+          { id: 'keep', word: 'keep', addedAt: 300 },
+          { id: 'drop', word: 'drop', addedAt: 300 },
+        ],
+      },
+    },
+  })
+  const deleted = await callHandler(route, {
+    method: 'POST',
+    body: {
+      state: {
+        savedAt: 400,
+        items: [],
+        words: [{ id: 'keep', word: 'keep', addedAt: 300 }],
+        removed: [{ kind: 'word', id: 'drop', at: 400 }],
+      },
+    },
+  })
+  assert.equal(deleted.body.ok, true)
+  const after = await callHandler(route)
+  const idsAfter = after.body.state.words.map((word) => word.id)
+  assert.ok(idsAfter.includes('keep'), 'the kept word survived')
+  assert.ok(!idsAfter.includes('drop'), 'the deleted word is gone')
+  assert.ok(after.body.state.removed.some((entry) => entry.id === 'drop'), 'the deletion is remembered')
+
+  // A panel that never saw the deletion cannot put the word back.
+  await callHandler(route, {
+    method: 'POST',
+    body: { state: { savedAt: 350, items: [], words: [{ id: 'drop', word: 'drop', addedAt: 300 }] } },
+  })
+  const final = await callHandler(route)
+  assert.ok(!final.body.state.words.map((word) => word.id).includes('drop'), 'a stale panel cannot restore it')
+})

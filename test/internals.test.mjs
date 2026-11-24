@@ -135,3 +135,25 @@ test('a panel with nothing stored adopts the shared library as it is', () => {
   const local = { items: [{ id: 'a', updatedAt: 5 }], words: [] }
   assert.deepEqual(mergeStates(local, null), local, 'no host file means the browser copy stays')
 })
+
+test('a deleted word stays deleted when a stale copy arrives', () => {
+  const local = {
+    words: [{ id: 'dream', word: 'dream', addedAt: 10 }],
+    removed: [{ kind: 'word', id: 'dream', at: 20 }],
+  }
+  const stale = { words: [{ id: 'dream', word: 'dream', addedAt: 10 }, { id: 'reve', word: 'reve', addedAt: 5 }] }
+  const merged = mergeStates(local, stale)
+  assert.deepEqual(merged.words.map((word) => word.id), ['reve'], 'the deleted word did not come back')
+
+  // Saving the same word again afterwards is a new entry, not a resurrection.
+  const again = { words: [{ id: 'dream', word: 'dream', addedAt: 30 }] }
+  const remerged = mergeStates(local, again)
+  assert.deepEqual(remerged.words.map((word) => word.id), ['dream'])
+  assert.equal(remerged.removed.length, 1, 'the tombstone is kept for the other browser')
+})
+
+test('a deleted dialogue stays deleted', () => {
+  const local = { items: [{ id: 'doc-1', updatedAt: 10 }, { id: 'doc-2', updatedAt: 5 }] }
+  const host = { items: [{ id: 'doc-1', updatedAt: 10 }], removed: [{ kind: 'item', id: 'doc-1', at: 20 }] }
+  assert.deepEqual(mergeStates(local, host).items.map((item) => item.id), ['doc-2'])
+})

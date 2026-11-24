@@ -166,6 +166,7 @@ async function readStore() {
       savedAt: Number.isFinite(parsed.savedAt) ? parsed.savedAt : 0,
       items: Array.isArray(parsed.items) ? parsed.items : [],
       words: Array.isArray(parsed.words) ? parsed.words : [],
+      removed: Array.isArray(parsed.removed) ? parsed.removed : [],
     };
   } catch {
     return null;
@@ -179,21 +180,36 @@ async function readStore() {
  * one that saves last cannot delete what the other just added.
  */
 function mergeStore(current, incoming) {
-  const union = (left, right, stamp) => {
+  /** `kind:id` to the moment it was deleted, from what is stored and what arrives. */
+  const gone = new Map();
+  for (const entry of [...(Array.isArray(current?.removed) ? current.removed : []),
+    ...(Array.isArray(incoming.removed) ? incoming.removed : [])]) {
+    if (entry === null || typeof entry !== 'object' || typeof entry.id !== 'string') continue;
+    const key = `${entry.kind}:${entry.id}`;
+    gone.set(key, Math.max(gone.get(key) ?? 0, Number(entry.at) ?? 0));
+  }
+  const union = (left, right, kind, stamp) => {
     const out = new Map();
     for (const entry of [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]) {
       if (entry === null || typeof entry !== 'object') continue;
       const id = String(entry.id ?? entry.word ?? '');
       if (id === '') continue;
+      // A copy older than its deletion stays deleted; a later save is a new entry.
+      if ((gone.get(`${kind}:${id}`) ?? 0) >= Number(entry[stamp] ?? 0)) continue;
       const held = out.get(id);
       if (held === undefined || Number(entry[stamp] ?? 0) >= Number(held[stamp] ?? 0)) out.set(id, entry);
     }
     return [...out.values()];
   };
+  const removed = [...gone.entries()].map(([key, at]) => {
+    const split = key.indexOf(':');
+    return { kind: key.slice(0, split), id: key.slice(split + 1), at };
+  }).sort((left, right) => left.at - right.at).slice(-500);
   return {
     savedAt: Math.max(Number(current?.savedAt ?? 0), Number(incoming.savedAt ?? 0)),
-    items: union(current?.items, incoming.items, 'updatedAt').slice(0, 500),
-    words: union(current?.words, incoming.words, 'addedAt').slice(0, 2000),
+    items: union(current?.items, incoming.items, 'item', 'updatedAt').slice(0, 500),
+    words: union(current?.words, incoming.words, 'word', 'addedAt').slice(0, 2000),
+    removed,
   };
 }
 
@@ -1692,6 +1708,7 @@ export function apply(ctx, config) {
         savedAt: Number.isFinite(state.savedAt) ? state.savedAt : Date.now(),
         items: state.items.slice(0, 500),
         words: state.words.slice(0, 2000),
+        removed: Array.isArray(state.removed) ? state.removed.slice(-500) : [],
       };
       try {
         const merged = mergeStore(await readStore(), stored);
