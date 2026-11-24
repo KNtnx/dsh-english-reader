@@ -26,6 +26,8 @@ window.__ModuleLoader__.load({
     const DICT_PATH = '/api-dsh-english-reader/dict'
     const DICT_AI = '/api-dsh-english-reader/dict/ai'
     const DICT_KEY = '/api-dsh-english-reader/dict/key'
+    /** The library and the saved words, kept by the host so every session shares them. */
+    const STORE_PATH = '/api-dsh-english-reader/store'
     const SPEECH_SOURCE_PATH = '/api-dsh-english-reader/tts/sources'
     /** A home-directory path reads better (and wraps less) as `~/…`. */
     function shortPath(value) {
@@ -857,7 +859,34 @@ window.__ModuleLoader__.load({
       return {}
     }
 
-    /** Format a byte count for the model card. */
+    /**
+ * Merge this browser's copy of the shared data with the host's.
+ *
+ * The library and the word list are the same everywhere, so both sides are
+ * unioned by id and the newer copy of each entry wins. Everything else — voices,
+ * reading width, caches — belongs to the browser that set it and is left alone.
+ */
+function mergeStates(local, remote) {
+  const base = local !== null && typeof local === 'object' ? local : {}
+  if (remote === null || typeof remote !== 'object') return base
+  /** Union two lists by id, keeping the entry with the later stamp. */
+  const keep = (left, right, stamp) => {
+    const out = new Map()
+    for (const entry of [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]) {
+      if (entry === null || typeof entry !== 'object') continue
+      const id = String(entry.id ?? entry.word ?? '')
+      if (id === '') continue
+      const held = out.get(id)
+      if (held === undefined || Number(entry[stamp] ?? 0) >= Number(held[stamp] ?? 0)) out.set(id, entry)
+    }
+    return [...out.values()]
+  }
+  const words = keep(base.words, remote.words, 'addedAt')
+    .sort((left, right) => Number(right.addedAt ?? 0) - Number(left.addedAt ?? 0))
+  return { ...base, items: keep(base.items, remote.items, 'updatedAt'), words }
+}
+
+/** Format a byte count for the model card. */
     function megabytes(bytes) {
       const value = Number(bytes) > 0 ? Number(bytes) : 89 * 1024 * 1024
       return String(Math.round(value / (1024 * 1024)))
@@ -937,6 +966,32 @@ window.__ModuleLoader__.load({
      * a thrown error unmounts the tree with nothing to show for it, so the
      * failure is caught here and printed instead.
      */
+    /**
+     * Read the shared library before the panel is built.
+     *
+     * The hooks live here, not in Reader: ReaderBody is called as a plain
+     * function so the error boundary can catch it, and a component that calls
+     * another component's hooks inline cannot also hold hooks of its own.
+     */
+    function ReaderBoot(props) {
+      const [boot, setBoot] = useState(null)
+      useEffect(() => {
+        let cancelled = false
+        const local = loadState()
+        void fetch(STORE_PATH, { cache: 'no-store' })
+          .then((response) => (response.ok ? response.json() : null))
+          .then((payload) => {
+            if (!cancelled) setBoot(mergeStates(local, payload?.state ?? null))
+          })
+          .catch(() => { if (!cancelled) setBoot(local) })
+        return () => { cancelled = true }
+      }, [])
+      // One frame while the shared library is read. Rendering the browser's own
+      // copy first would show an empty list on a browser that has never saved one.
+      if (boot === null) return h('div', { className: 'er-root' })
+      return h(Reader, { ...props, boot })
+    }
+
     function Reader(props) {
       try {
         return ReaderBody(props)
@@ -954,7 +1009,7 @@ window.__ModuleLoader__.load({
       const dict = DICT[String(localeId).toLowerCase().startsWith('zh') ? 'zh' : 'en']
       const t = useCallback((key, vars) => fill(dict[key] ?? key, vars), [dict])
 
-      const initial = useMemo(() => loadState(), [])
+      const initial = useMemo(() => (props.boot ?? loadState()), [])
       const initialItems = Array.isArray(initial.items) ? initial.items.filter((item) => item !== null
         && typeof item === 'object' && typeof item.text === 'string') : []
       const initialActive = initialItems.some((item) => item.id === initial.activeId) ? initial.activeId : (initialItems[0]?.id ?? '')
@@ -1296,8 +1351,10 @@ window.__ModuleLoader__.load({
         void loadWordEntryRef.current(row.word)
       }, [dictShow, dictCn, dictEn])
 
-      // The card belongs to the document on screen; leaving that document closes it.
-      useEffect(() => { setSettingsOpen(false) }, [view, activeId])
+      // The card belongs to the document on screen; leaving it closes both the
+      // settings sheet and the word card, which otherwise floats over the saved
+      // words page and covers the row the reader came to look at.
+      useEffect(() => { setSettingsOpen(false); setCard(null) }, [view, activeId])
 
       const active = items.find((item) => item.id === activeId) ?? null
       const activeMode = active?.mode ?? 'auto'
@@ -1755,6 +1812,27 @@ window.__ModuleLoader__.load({
       }, [status, index, applyWord])
 
       /** Write the library out; overrides let a handler persist a state React has not rendered yet. */
+      /**
+       * Send the shared half of the panel state to the host, shortly after it
+       * changes. Debounced because a reading position changes on every sentence;
+       * the host merges by id, so two open panels cannot erase each other.
+       */
+      const storeTimerRef = useRef(0)
+      const storePendingRef = useRef(null)
+      const sendStore = useCallback((payload) => {
+        storePendingRef.current = payload
+        if (storeTimerRef.current !== 0) return
+        storeTimerRef.current = setTimeout(() => {
+          storeTimerRef.current = 0
+          const body = JSON.stringify({ state: storePendingRef.current })
+          void fetch(STORE_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body,
+          }).catch(() => { /* the next change sends the whole state again */ })
+        }, 600)
+      }, [])
+
       const persist = useCallback((override) => {
         const list = override?.items ?? items
         const id = override?.activeId === undefined ? activeId : override.activeId
@@ -1766,7 +1844,14 @@ window.__ModuleLoader__.load({
             items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
           }))
         } catch { /* storage full or blocked: the panel still works */ }
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB])
+        // The library and the word list are user data, not view state: the host
+        // keeps them so the next session, and the next browser, starts with them.
+        sendStore({
+          savedAt: Date.now(),
+          items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
+          words,
+        })
+      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
 
       // Remember the library, the position, and the settings.
       useEffect(() => {
@@ -1779,6 +1864,18 @@ window.__ModuleLoader__.load({
       useEffect(() => () => {
         disposedRef.current = true
         saveRef.current?.()
+        if (storeTimerRef.current !== 0) {
+          clearTimeout(storeTimerRef.current)
+          storeTimerRef.current = 0
+          const pending = storePendingRef.current
+          if (pending !== null) {
+            void fetch(STORE_PATH, {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ state: pending }),
+            }).catch(() => { /* nothing left to retry with */ })
+          }
+        }
         for (const clip of cacheRef.current.values()) URL.revokeObjectURL(clip.url)
         cacheRef.current.clear()
         inflightRef.current.clear()
@@ -3789,7 +3886,7 @@ window.__ModuleLoader__.load({
     return {
       inject: ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight'],
       /** Pure helpers, exposed so the panel's parsing can be tested without a browser. */
-      internals: { parseDialogue, splitSentences, hashText, titleFor, EDGE_VOICES, LOCAL_VOICES, SPEEDS, DICT, buildTimings, wordsOf, normalizeWord },
+      internals: { parseDialogue, splitSentences, hashText, titleFor, EDGE_VOICES, LOCAL_VOICES, SPEEDS, DICT, buildTimings, wordsOf, normalizeWord, mergeStates },
 
       /**
        * Register the tab type, its body, the guide card, and the composer launcher.
@@ -3841,7 +3938,7 @@ window.__ModuleLoader__.load({
                 ? ctx.uiWorkspace.pickDirectory()
                 : Promise.resolve(null)),
             }),
-          }, Reader))
+          }, ReaderBoot))
           , 'english-reader: panel body')
 
         // The panel is also a session view, so it can be shown full width beside
@@ -3869,7 +3966,7 @@ window.__ModuleLoader__.load({
                 ? ctx.uiWorkspace.pickDirectory()
                 : Promise.resolve(null)),
             }),
-          }, Reader))
+          }, ReaderBoot))
           , 'english-reader: full page')
 
 

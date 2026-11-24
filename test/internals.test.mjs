@@ -10,7 +10,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { internals } from './harness.mjs'
 
-const { splitSentences, parseDialogue, titleFor, wordsOf, normalizeWord, hashText, buildTimings } = internals
+const { splitSentences, parseDialogue, titleFor, wordsOf, normalizeWord, hashText, buildTimings, mergeStates } = internals
 
 test('sentences split on their own punctuation', () => {
   assert.deepEqual(splitSentences('One. Two! Three?'), ['One.', 'Two!', 'Three?'])
@@ -95,4 +95,43 @@ test('without marks the words are spread over the clip by length', () => {
   assert.ok(times[0] < times[1] && times[1] < times[2], 'times only move forward')
   assert.equal(times[0], 0)
   assert.ok(times[2] < 1000, 'the last word starts before the clip ends')
+})
+
+test('the shared library is merged by id, newer copy wins', () => {
+  const local = {
+    version: 3,
+    fontScale: 1.2,
+    items: [
+      { id: 'a', title: 'Local a', updatedAt: 10 },
+      { id: 'b', title: 'Local b', updatedAt: 20 },
+    ],
+    words: [
+      { id: 'dream', word: 'dream', addedAt: 10 },
+      { id: 'revive', word: 'revive', addedAt: 30 },
+    ],
+  }
+  const remote = {
+    items: [
+      { id: 'a', title: 'Shared a', updatedAt: 30 },
+      { id: 'c', title: 'Shared c', updatedAt: 5 },
+    ],
+    words: [
+      { id: 'dream', word: 'dream', addedAt: 40 },
+      { id: 'lantern', word: 'lantern', addedAt: 50 },
+    ],
+  }
+  const merged = mergeStates(local, remote)
+  assert.deepEqual(merged.items.map((item) => item.id).sort(), ['a', 'b', 'c'])
+  assert.equal(merged.items.find((item) => item.id === 'a').title, 'Shared a', 'the newer copy of a entry wins')
+  assert.deepEqual(merged.words.map((word) => word.id), ['lantern', 'dream', 'revive'], 'newest word first')
+  assert.equal(merged.words.find((word) => word.id === 'dream').addedAt, 40)
+  assert.equal(merged.fontScale, 1.2, 'browser settings are not taken from the host')
+})
+
+test('a panel with nothing stored adopts the shared library as it is', () => {
+  const remote = { items: [{ id: 'a', updatedAt: 5 }], words: [{ id: 'w', addedAt: 5 }] }
+  assert.deepEqual(mergeStates({}, remote).items, remote.items)
+  assert.deepEqual(mergeStates(null, remote).words, remote.words)
+  const local = { items: [{ id: 'a', updatedAt: 5 }], words: [] }
+  assert.deepEqual(mergeStates(local, null), local, 'no host file means the browser copy stays')
 })

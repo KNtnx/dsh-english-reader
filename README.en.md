@@ -117,6 +117,7 @@ Lookups are limited to the sentence being read, so a long article never pays for
 - Only the **word and its sentence** are stored; the definitions come from the dictionary or the cache, so one word reads from WordNet in English mode and from iciba in Chinese mode.
 - Three speakers: the word, each English example, and the source sentence. A word saved from the lookup card has no sentence, so that speaker is greyed out.
 - Both the saved-words page and the library return to the open dialogue in one click, and both share the reader's width and size controls.
+- **Shared across conversations**: the library, the reading positions and the saved words live on the host (`library.json`), not in one browser's storage, so every conversation and every browser opens the same list.
 
 <p align="center">
   <img src="docs/words-2.png" width="640" alt="Saved words: revive expanded, Chinese senses by part of speech, English definitions with examples and speakers, the source sentence at the end"/>
@@ -135,7 +136,7 @@ Lookups are limited to the sentence being read, so a long article never pays for
 - Text is synthesized only by the engine you pick: the local model stays offline, Edge and custom APIs send the sentence to that vendor.
 - A lookup sends only the word you right-clicked to the dictionary source, never the whole text.
 - API keys stay on the host and are never sent to the browser or written to browser storage.
-- Local models and source records live under `$DSH_HOME/dsh-english-reader/` and are not uploaded.
+- Local models, source records and the dialogue library live under `$DSH_HOME/dsh-english-reader/` and are not uploaded.
 - Translation and speech requests are made from the host, never from the panel.
 
 ## Troubleshooting

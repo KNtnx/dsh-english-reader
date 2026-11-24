@@ -30,8 +30,11 @@ left. Open one to resume it; delete with the × (press twice to confirm).
 read** replaces that dialogue rather than creating a copy. If the text changed, the saved
 position goes back to the first sentence, because the old sentence numbers no longer apply.
 
-Everything is stored in this browser's local storage. The plugin's first release kept a
-single dialogue; that text is migrated into the library automatically on first open.
+The library and the saved words are kept by the host, in
+`$DSH_HOME/dsh-english-reader/library.json` (mode 0600), so every conversation and every
+browser sees the same list. Voice, width and type-size settings stay with the browser that
+set them; the plugin's first release kept a single dialogue, and that text is migrated into
+the library automatically on first open.
 
 ## Reading
 
@@ -147,9 +150,11 @@ instant, and the next three sentences are synthesized ahead of the one playing.
 - **The local model is English and CPU-only.** It is Kokoro-82M, which is fast but not as
   natural as the best cloud voices, and the first sentence after a restart waits for the
   model to load.
-- **The library is per browser.** Dialogues and positions live in this browser's local
-  storage, not in a DSH session or on the host, so a different browser or cleared site data
-  starts fresh. Only the downloaded model is per machine.
+- **The shared library is last-write-wins per entry.** Two panels open at once merge what
+  they save (the host unions by id), but a panel that is already open does not redraw when
+  the other one saves: the list is read when the panel mounts.
+- **A cleared browser does not clear the library.** Dialogues and words live on the host;
+  deleting `library.json` is what starts over.
 - **The dialogue decision is a heuristic.** Two or more distinct labels covering at least
   a quarter of the lines make a dialogue; otherwise the text is read as an article. Prose
   with two incidental `Word:` lines can be misread, and a transcript with one speaker is

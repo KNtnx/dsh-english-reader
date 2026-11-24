@@ -46,6 +46,21 @@ async function ask(routes, path, query = '') {
   return { status: response.status, body: await response.json() }
 }
 
+/** Answer a handler-style route with a fake request and response. */
+function callHandler(route, options = {}) {
+  const answered = { status: 200, body: null }
+  const payload = options.raw ?? (options.body === undefined ? undefined : JSON.stringify(options.body))
+  const request = {
+    method: options.method ?? 'GET',
+    async *[Symbol.asyncIterator]() { if (payload !== undefined) yield Buffer.from(payload) },
+  }
+  const response = {
+    writeHead(status) { answered.status = status; return this },
+    end(body) { try { answered.body = JSON.parse(body) } catch { answered.body = body } return this },
+  }
+  return route.handler(request, response).then(() => answered)
+}
+
 /** Stub one upstream fetch shape for the duration of a call. */
 async function withUpstream(routes_, fetchImpl, run) {
   const original = globalThis.fetch
@@ -184,4 +199,51 @@ test('the local engine reports its state instead of failing the panel', async ()
   assert.equal(result.status, 200)
   assert.equal(typeof result.body.installed, 'boolean')
   assert.ok(typeof result.body.phase === 'string' || result.body.phase === null)
+})
+
+test('the library is shared through the host, not one browser', async () => {
+  const route = routes.get(`${PREFIX}/store`)
+  assert.ok(route !== undefined, 'the store route is registered')
+
+  const fresh = await callHandler(route)
+  assert.deepEqual(fresh.body, { ok: true, state: null }, 'a fresh host holds nothing yet')
+
+  const first = await callHandler(route, {
+    method: 'POST',
+    body: {
+      state: {
+        savedAt: 100,
+        items: [{ id: 'doc-1', title: 'One', updatedAt: 100 }],
+        words: [{ id: 'dream', word: 'dream', addedAt: 100 }],
+      },
+    },
+  })
+  assert.equal(first.body.ok, true)
+
+  const stored = await callHandler(route)
+  assert.deepEqual(stored.body.state.items.map((item) => item.id), ['doc-1'])
+  assert.deepEqual(stored.body.state.words.map((word) => word.id), ['dream'])
+
+  // A second panel saves a different word: nothing from the first is lost.
+  await callHandler(route, {
+    method: 'POST',
+    body: { state: { savedAt: 200, items: [], words: [{ id: 'revive', word: 'revive', addedAt: 200 }] } },
+  })
+  const merged = await callHandler(route)
+  assert.deepEqual(merged.body.state.words.map((word) => word.id).sort(), ['dream', 'revive'])
+  assert.deepEqual(merged.body.state.items.map((item) => item.id), ['doc-1'])
+})
+
+test('the store refuses what it cannot keep', async () => {
+  const route = routes.get(`${PREFIX}/store`)
+  const wrongMethod = await callHandler(route, { method: 'DELETE' })
+  assert.equal(wrongMethod.status, 405)
+
+  const badJson = await callHandler(route, { method: 'POST', raw: '{not json' })
+  assert.equal(badJson.status, 400)
+  assert.equal(badJson.body.error, 'badJson')
+
+  const badState = await callHandler(route, { method: 'POST', body: { state: { items: 'nope' } } })
+  assert.equal(badState.status, 400)
+  assert.equal(badState.body.error, 'badState')
 })

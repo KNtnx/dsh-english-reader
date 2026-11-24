@@ -29,8 +29,8 @@ node --test test/panel.dict.test.mjs
 | --- | --- |
 | `test/panel.dict.test.mjs` | The dictionary end to end: right-click, save, expand a saved word, look up from the pinned card, switch dictionary, two lookups racing |
 | `test/panel.smoke.test.mjs` | Every view mounts and responds: reader, sentence stepper, saved words, library, editor, settings, Chinese locale. Any render crash or `console.error` fails the test |
-| `test/internals.test.mjs` | Sentence splitting (abbreviations, decimals, quotes, wrapped lines), dialogue detection, titles, word normalisation, speech-mark alignment |
-| `test/host.test.mjs` | Host routes exist for every path the panel calls, and the dictionary routes parse real answer shapes: iciba, Datamuse, Wiktionary markup, misses, bad words, bad sources |
+| `test/internals.test.mjs` | Sentence splitting (abbreviations, decimals, quotes, wrapped lines), dialogue detection, titles, word normalisation, speech-mark alignment, merging this browser's library with the host's |
+| `test/host.test.mjs` | Host routes exist for every path the panel calls; the dictionary routes parse real answer shapes (iciba, Datamuse, Wiktionary markup, misses, bad words, bad sources); the shared library route stores, merges by id and refuses bad payloads |
 | `test/copy.test.mjs` | Both languages define the same keys, every key the panel asks for exists, no copy is empty, every class the panel applies has a rule |
 
 The panel tests use `test/harness.mjs`, which:

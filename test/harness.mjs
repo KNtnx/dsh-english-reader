@@ -54,7 +54,7 @@ export function createHost(options = {}) {
     const url = new URL(String(input), 'http://127.0.0.1')
     const path = url.pathname
     const method = String(init.method ?? 'GET').toUpperCase()
-    calls.push({ method, path, search: url.search })
+    calls.push({ method, path, search: url.search, body: typeof init.body === 'string' ? init.body : null })
 
     if (path === '/api-dsh-english-reader/tts/sources' && method === 'GET') return json({ sources: [] })
     if (path === '/api-dsh-english-reader/local/status') {
@@ -70,6 +70,11 @@ export function createHost(options = {}) {
     }
     if (path === '/api-dsh-english-reader/translate/models') return json({ models: [] })
     if (path === '/api-dsh-english-reader/dict/key') return json({ hasKey: false, masked: '' })
+    if (path === '/api-dsh-english-reader/store') {
+      if (method === 'GET') return json({ ok: true, state: host.store })
+      host.store = JSON.parse(String(init.body ?? '{}'))?.state ?? null
+      return json({ ok: true, savedAt: Date.now() })
+    }
     if (path === '/api-dsh-english-reader/dict' && method === 'GET') {
       const word = (url.searchParams.get('word') ?? '').toLowerCase()
       const source = url.searchParams.get('source') ?? ''
@@ -95,7 +100,8 @@ export function createHost(options = {}) {
     return json({ ok: false, error: `no mock for ${method} ${path}` }, { status: 404 })
   }
 
-  return { fetch, calls, json }
+  const host = { fetch, calls, json, store: options.store ?? null }
+  return host
 }
 
 /** A saved word and a dialogue containing it, so the list and the page agree. */
@@ -166,6 +172,8 @@ export async function launchPanel(options = {}) {
   document.body.append(container)
   const root = createRoot(container)
   await act(async () => { root.render(React.createElement(entry.component, props)) })
+  // The panel reads the shared library from the host on mount; let it land.
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)) })
 
   const api = {
     host,

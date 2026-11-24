@@ -117,6 +117,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 - 收藏只记录**单词和原句**，释义来自词典或缓存——所以同一个词在「英英」下看是 WordNet，在「中文」下看是 iciba。
 - 三个喇叭：单词、词条例句、原句各一个；从字典卡片搜来的词没有原句，那个喇叭是灰的。
 - 「我的单词」和「对话库」都可一键返回当前对话；两页共用阅读页的宽度与字号设置。
+- **跨会话共享**：对话库、朗读位置和收藏的单词存在宿主（`library.json`）里，不是某个浏览器的本地存储——所以每个对话、每个浏览器打开都是同一份。
 
 <p align="center">
   <img src="docs/words-2.png" width="640" alt="我的单词：展开 revive，中文按词性分行，英文释义带例句与小喇叭，末尾标注原句"/>
@@ -135,7 +136,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 - 文本只在你选择的引擎上合成：本地模型完全离线，Edge 与自定义 API 会把句子发给对应服务商。
 - 查词时只有你查的那个单词会发给词典来源（iciba / Wiktionary），不会上传整篇文本。
 - API 密钥只存宿主，不以任何形式下发到浏览器，也不写进前端存储。
-- 本机模型与来源配置分别在 `$DSH_HOME/dsh-english-reader/models/` 与 `sources.json`，不上传。
+- 本机模型、来源配置与对话库分别在 `$DSH_HOME/dsh-english-reader/models/`、`sources.json` 与 `library.json`，不上传。
 - 翻译与语音请求只从宿主发起，面板不直连第三方。
 
 ## 排错

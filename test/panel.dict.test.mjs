@@ -125,6 +125,20 @@ test('the dictionary button opens a card that can look up a typed word', async (
   }
 })
 
+test('leaving the dialogue closes the floating card', async () => {
+  const api = await launchPanel({ state: SAVED_DREAM })
+  try {
+    await api.rightClick(wordSpan(api, 'revive'))
+    assert.equal(api.text('.er-wordcard-word'), 'revive')
+    // The saved words page is a different view: a card pointing at a sentence
+    // from the dialogue would float over the list and cover its rows.
+    await api.click(api.q('button.er-glyph[title="Saved words"]'))
+    assert.equal(api.q('.er-wordcard'), null, 'the card did not follow the reader to the list')
+  } finally {
+    await api.unmount()
+  }
+})
+
 test('changing the dictionary refreshes the expanded saved word', async () => {
   const api = await launchPanel({ state: SAVED_DREAM })
   try {
@@ -145,6 +159,40 @@ test('changing the dictionary refreshes the expanded saved word', async () => {
     await api.choose(select, 'wiktionary')
     assert.equal(asked(), 1, 'the open word was resolved again through the new source')
     assert.match(api.text('.er-wrow-body'), /imaginary events/, 'the expansion still shows the entry')
+  } finally {
+    await api.unmount()
+  }
+})
+
+test('a word saved in another session is already in the list', async () => {
+  // What the host holds is what every conversation sees; this browser has never
+  // saved anything.
+  const api = await launchPanel({
+    state: FIXTURE_STATE,
+    host: { store: { savedAt: 1, items: [], words: [{ id: 'lantern', word: 'lantern', addedAt: 1 }] } },
+  })
+  try {
+    await api.click(api.q('button.er-glyph[title="Saved words"]'))
+    assert.deepEqual(api.texts('.er-wrow .er-entry-title'), ['lantern'])
+  } finally {
+    await api.unmount()
+  }
+})
+
+test('saving a word writes it to the shared library on the host', async () => {
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    await api.rightClick(wordSpan(api, 'revive'))
+    const save = api.qa('.er-add').find((node) => node.textContent.includes('Save word'))
+    await api.click(save)
+    // The state write and the store write are both debounced, so this settles a
+    // little after the click rather than inside it.
+    await api.waitFor(() => api.host.store?.words?.length === 1, {
+      timeout: 4000, label: 'the shared library on the host',
+    })
+    const posted = api.host.calls.filter((call) => call.path === '/api-dsh-english-reader/store' && call.method === 'POST')
+    assert.ok(posted.length > 0, 'the panel posted the shared half to the host')
+    assert.deepEqual(api.host.store.words.map((word) => word.id), ['revive'])
   } finally {
     await api.unmount()
   }

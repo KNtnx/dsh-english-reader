@@ -16,7 +16,7 @@
  */
 
 import { spawn } from 'node:child_process';
-import { mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -46,10 +46,14 @@ const PATHS = {
   dict: '/api-dsh-english-reader/dict',
   dictAi: '/api-dsh-english-reader/dict/ai',
   dictKey: '/api-dsh-english-reader/dict/key',
+  store: '/api-dsh-english-reader/store',
   translate: '/api-dsh-english-reader/translate',
   translateOptions: '/api-dsh-english-reader/translate/options',
   translateModels: '/api-dsh-english-reader/translate/models',
 };
+
+/** Longest library payload worth keeping; a full library is far smaller. */
+const MAX_STORE_BYTES = 4 * 1024 * 1024;
 
 /** Longest batch one translation request may carry. */
 const MAX_TRANSLATE_TEXTS = 400;
@@ -139,6 +143,66 @@ async function readCollinsKey() {
 async function writeCollinsKey(key) {
   await mkdir(dirname(dictKeyFile()), { recursive: true });
   await writeFile(dictKeyFile(), JSON.stringify({ collinsKey: key }, null, 2), { mode: 0o600 });
+}
+
+/**
+ * The panel's shared data: the dialogue library and the saved words.
+ *
+ * These used to live in one browser's localStorage, which made them per browser
+ * and per origin (localhost and 127.0.0.1 are different origins), so two
+ * conversations could show two different libraries. They are user data, not view
+ * state, so they are kept on the host and every panel reads the same file.
+ */
+function storeFile() {
+  return join(dshHome(), 'dsh-english-reader', 'library.json');
+}
+
+/** @returns {Promise<{savedAt: number, items: any[], words: any[]}|null>} the stored data, or null. */
+async function readStore() {
+  try {
+    const parsed = JSON.parse(await readFile(storeFile(), 'utf8'));
+    if (parsed === null || typeof parsed !== 'object') return null;
+    return {
+      savedAt: Number.isFinite(parsed.savedAt) ? parsed.savedAt : 0,
+      items: Array.isArray(parsed.items) ? parsed.items : [],
+      words: Array.isArray(parsed.words) ? parsed.words : [],
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Union two library payloads by id, keeping the newer entry of each.
+ *
+ * Two panels can be open at once (sidebar and full page). Merging here means the
+ * one that saves last cannot delete what the other just added.
+ */
+function mergeStore(current, incoming) {
+  const union = (left, right, stamp) => {
+    const out = new Map();
+    for (const entry of [...(Array.isArray(left) ? left : []), ...(Array.isArray(right) ? right : [])]) {
+      if (entry === null || typeof entry !== 'object') continue;
+      const id = String(entry.id ?? entry.word ?? '');
+      if (id === '') continue;
+      const held = out.get(id);
+      if (held === undefined || Number(entry[stamp] ?? 0) >= Number(held[stamp] ?? 0)) out.set(id, entry);
+    }
+    return [...out.values()];
+  };
+  return {
+    savedAt: Math.max(Number(current?.savedAt ?? 0), Number(incoming.savedAt ?? 0)),
+    items: union(current?.items, incoming.items, 'updatedAt').slice(0, 500),
+    words: union(current?.words, incoming.words, 'addedAt').slice(0, 2000),
+  };
+}
+
+/** Write through a temporary file so a crash mid-write cannot truncate the library. */
+async function writeStore(state) {
+  await mkdir(dirname(storeFile()), { recursive: true });
+  const temporary = `${storeFile()}.tmp`;
+  await writeFile(temporary, JSON.stringify(state), { mode: 0o600 });
+  await rename(temporary, storeFile());
 }
 
 /**
@@ -1574,6 +1638,70 @@ export function apply(ctx, config) {
       }
     },
   }), 'english-reader: model dictionary');
+
+  ctx.effect(() => ctx.webServer.register({
+    kind: 'exact',
+    path: PATHS.store,
+    /**
+     * The dialogue library and the saved words, shared by every panel.
+     *
+     * GET returns whatever the host holds (possibly nothing on a fresh install).
+     * POST replaces it; the panel merges before it writes, so two open panels do
+     * not delete each other's work.
+     */
+    handler: async (request, response) => {
+      const send = (payload, status) => response.writeHead(status ?? 200, {
+        'content-type': 'application/json',
+        'cache-control': 'no-store',
+      }).end(JSON.stringify(payload));
+
+      if (request.method === 'GET') {
+        send({ ok: true, state: await readStore() });
+        return;
+      }
+      if (request.method !== 'POST') { send({ ok: false, error: 'method not allowed' }, 405); return; }
+
+      /** @type {Buffer[]} */
+      const chunks = [];
+      let size = 0;
+      try {
+        for await (const chunk of request) {
+          size += chunk.length;
+          if (size > MAX_STORE_BYTES) { send({ ok: false, error: 'tooLarge' }, 413); return; }
+          chunks.push(chunk);
+        }
+      } catch {
+        send({ ok: false, error: 'unreadable' }, 400);
+        return;
+      }
+
+      let body;
+      try { body = JSON.parse(Buffer.concat(chunks).toString('utf8')); } catch {
+        send({ ok: false, error: 'badJson' }, 400);
+        return;
+      }
+      const state = body?.state;
+      if (state === null || typeof state !== 'object' || Array.isArray(state)
+        || !Array.isArray(state.items) || !Array.isArray(state.words)) {
+        send({ ok: false, error: 'badState' }, 400);
+        return;
+      }
+      // Only the shared half is kept: positions live inside items, settings and
+      // caches belong to the browser that made them.
+      const stored = {
+        savedAt: Number.isFinite(state.savedAt) ? state.savedAt : Date.now(),
+        items: state.items.slice(0, 500),
+        words: state.words.slice(0, 2000),
+      };
+      try {
+        const merged = mergeStore(await readStore(), stored);
+        await writeStore(merged);
+        send({ ok: true, savedAt: merged.savedAt });
+      } catch (error) {
+        send({ ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
+      }
+    },
+  }), 'english-reader: shared library');
 
   ctx.effect(() => ctx.webServer.register({
     kind: 'exact',
