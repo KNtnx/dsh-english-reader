@@ -1247,10 +1247,22 @@ function mergeStates(local, remote) {
         } catch { /* the row keeps saying it is missing */ }
       }, [collinsDraft])
 
+      /**
+       * The cache key one slot answers under.
+       *
+       * A model slot also names its model, so two models do not read each
+       * other's answers. Both the lookup and the list must build this the same
+       * way — the list spent a while looking up `word|model`, never finding what
+       * the model had already answered, and falling back to the other language.
+       */
+      const entryKey = useCallback((word, source, route) => {
+        const modelKey = source === 'model' ? `${route?.provider ?? translateRoute}/${route?.model ?? ''}` : ''
+        return `${String(word).toLowerCase()}|${source}${modelKey === '' ? '' : `|${modelKey}`}`
+      }, [translateRoute])
+
       /** Resolve one word through one source; the answer is cached, not stored in the entry. */
       const resolveSource = useCallback(async (word, source, modelRoute) => {
-        const modelKey = source === 'model' ? `${modelRoute?.provider ?? translateRoute}/${modelRoute?.model ?? ''}` : '';
-        const key = `${String(word).toLowerCase()}|${source}${modelKey === '' ? '' : `|${modelKey}`}`;
+        const key = entryKey(word, source, modelRoute);
         const cached = aiEntries[key];
         if (cached !== undefined) return cached;
         if (source === 'model') {
@@ -1286,7 +1298,7 @@ function mergeStates(local, remote) {
         };
         setAiEntries((current) => ({ ...current, [key]: built }));
         return built;
-      }, [translateRoute, translateModel, aiEntries, t])
+      }, [entryKey, translateModel, aiEntries, t])
 
       /** Resolve a word through both slots, sharing a request when they agree. */
       const resolveWord = useCallback(async (word) => {
@@ -2779,9 +2791,8 @@ function mergeStates(local, remote) {
               const english = resolved === null || dictShow === 'zh' ? [] : sensesOf(resolved.senses)
               const unsupported = open && resolved !== null && chinese.length === 0 && english.length === 0
               const hasContext = typeof item.context === 'string' && item.context.trim() !== ''
-              const key = String(item.word).toLowerCase()
-              const cachedCn = aiEntries[`${key}|${dictCn}`]
-              const cachedEn = aiEntries[`${key}|${dictEn}`]
+              const cachedCn = aiEntries[entryKey(item.word, dictCn, dictModelCn)]
+              const cachedEn = aiEntries[entryKey(item.word, dictEn, dictModelEn)]
               const glossCn = sensesOf(cachedCn?.translation)[0]?.def ?? sensesOf(cachedCn?.senses)[0]?.def ?? ''
               const glossEn = sensesOf(cachedEn?.senses)[0]?.def ?? sensesOf(cachedEn?.translation)[0]?.def ?? ''
               // The row prints what the chosen dictionary shows, and nothing else:

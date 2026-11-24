@@ -241,3 +241,34 @@ test('with both languages the list prefers the Chinese gloss', async () => {
     await api.unmount()
   }
 })
+
+test('a model-written entry is found by the list, not only by the card', async () => {
+  // The model slot caches under `word|model|<provider>/<model>`. The list used to
+  // look under `word|model`, so it never saw the answer and printed the other
+  // language's gloss instead.
+  const state = {
+    ...FIXTURE_STATE,
+    dictShow: 'both',
+    dictCn: 'model',
+    dictModelCn: { provider: 'test-provider', model: 'test-model' },
+    words: [{ id: 'tackle', word: 'tackle', context: '', senses: [], translation: [], addedAt: 1 }],
+    aiEntries: {
+      'tackle|wordnet': {
+        word: 'tackle', phonetic: '',
+        senses: [{ pos: 'n', def: '(sports, countable) A play where a player takes the ball', example: '' }],
+        translation: [], source: 'wordnet',
+      },
+      'tackle|model|test-provider/test-model': {
+        word: 'tackle', phonetic: '', senses: [],
+        translation: [{ pos: 'v', def: '着手处理；应付' }], source: 'model',
+      },
+    },
+  }
+  const api = await launchPanel({ state })
+  try {
+    await api.click(api.q('button.er-glyph[title="Saved words"]'))
+    assert.equal(api.text('.er-wrow .er-entry-meta'), '着手处理；应付')
+  } finally {
+    await api.unmount()
+  }
+})
