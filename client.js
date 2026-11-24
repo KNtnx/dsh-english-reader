@@ -2779,10 +2779,15 @@ function mergeStates(local, remote) {
               const english = resolved === null || dictShow === 'zh' ? [] : sensesOf(resolved.senses)
               const unsupported = open && resolved !== null && chinese.length === 0 && english.length === 0
               const hasContext = typeof item.context === 'string' && item.context.trim() !== ''
-              const cachedCn = aiEntries[`${String(item.word).toLowerCase()}|${dictCn}`]
-              const cachedEn = aiEntries[`${String(item.word).toLowerCase()}|${dictEn}`]
-              const gloss = (sensesOf(cachedCn?.translation)[0]?.def ?? sensesOf(cachedCn?.senses)[0]?.def
-                ?? sensesOf(cachedEn?.senses)[0]?.def ?? sensesOf(cachedEn?.translation)[0]?.def ?? '')
+              const key = String(item.word).toLowerCase()
+              const cachedCn = aiEntries[`${key}|${dictCn}`]
+              const cachedEn = aiEntries[`${key}|${dictEn}`]
+              const glossCn = sensesOf(cachedCn?.translation)[0]?.def ?? sensesOf(cachedCn?.senses)[0]?.def ?? ''
+              const glossEn = sensesOf(cachedEn?.senses)[0]?.def ?? sensesOf(cachedEn?.translation)[0]?.def ?? ''
+              // The row prints what the chosen dictionary shows, and nothing else:
+              // in Chinese-only mode an English definition here is a bug, not a
+              // fallback. With both languages the Chinese gloss reads first.
+              const gloss = dictShow === 'zh' ? glossCn : dictShow === 'en' ? glossEn : (glossCn !== '' ? glossCn : glossEn)
               return h('li', { key: item.id, className: `er-wrow${open ? ' er-wrow-on' : ''}` },
                 h('div', { className: 'er-wrow-head' },
                   h('button', {

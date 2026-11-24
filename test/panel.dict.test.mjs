@@ -197,3 +197,47 @@ test('saving a word writes it to the shared library on the host', async () => {
     await api.unmount()
   }
 })
+
+const TACKLE_ROW = {
+  ...FIXTURE_STATE,
+  words: [{ id: 'tackle', word: 'tackle', context: '', senses: [], translation: [], addedAt: 1 }],
+  aiEntries: {
+    'tackle|wordnet': {
+      word: 'tackle', phonetic: '',
+      senses: [{ pos: 'n', def: '(sports, countable) A play where a player takes the ball', example: '' }],
+      translation: [], source: 'wordnet',
+    },
+  },
+}
+
+test('Chinese-only mode never prints an English gloss in the list', async () => {
+  const api = await launchPanel({ state: { ...TACKLE_ROW, dictShow: 'zh' } })
+  try {
+    await api.click(api.q('button.er-glyph[title="Saved words"]'))
+    assert.equal(api.text('.er-wrow .er-entry-meta'), 'No definition stored',
+      'the English definition was cached, but this mode does not show English')
+  } finally {
+    await api.unmount()
+  }
+})
+
+test('with both languages the list prefers the Chinese gloss', async () => {
+  const state = {
+    ...TACKLE_ROW,
+    dictShow: 'both',
+    aiEntries: {
+      ...TACKLE_ROW.aiEntries,
+      'tackle|iciba': {
+        word: 'tackle', phonetic: '', senses: [],
+        translation: [{ pos: 'v', def: '着手处理；应付' }], source: 'iciba',
+      },
+    },
+  }
+  const api = await launchPanel({ state })
+  try {
+    await api.click(api.q('button.er-glyph[title="Saved words"]'))
+    assert.equal(api.text('.er-wrow .er-entry-meta'), '着手处理；应付')
+  } finally {
+    await api.unmount()
+  }
+})
