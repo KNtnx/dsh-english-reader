@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
 // The host keeps its files under DSH_HOME; point that at a scratch folder so a
@@ -76,7 +76,11 @@ const routes = registerRoutes()
 
 test('every route the panel calls exists on the host', () => {
   const client = readFileSync(fileURLToPath(new URL('../client.js', import.meta.url)), 'utf8')
-  const host = readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8')
+  // The host is an entry plus one module per responsibility; the routes live in
+  // host/routes.js and the paths in host/constants.js.
+  const hostDir = fileURLToPath(new URL('../host/', import.meta.url))
+  const host = [readFileSync(fileURLToPath(new URL('../index.js', import.meta.url)), 'utf8'),
+    ...readdirSync(hostDir).map((name) => readFileSync(join(hostDir, name), 'utf8'))].join('\n')
   const pathsIn = (text) => new Set(text.match(/\/api-dsh-english-reader\/[a-z/]+/g) ?? [])
   const hostPaths = pathsIn(host)
   const missing = [...pathsIn(client)].filter((path) => !hostPaths.has(path))
