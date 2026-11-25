@@ -1220,6 +1220,766 @@ function mergeStates(local, remote) {
        */
   }
 
+  /** The header block, split out so the panel body stays readable. */
+  function renderHeader(ui) {
+    const { capsuleRef, editActive, engineLabel, goView, headerNote, headerTitle, modelBusy, openSettings, returnView, setSettingsOpen, settingsOpen, showTranslation, t, title, toggleTranslation, total, translating, view, words } = ui
+  return h('div', { className: 'er-head' },
+        h('div', { className: 'er-head-text' },
+          h('div', { className: 'er-title' }, headerTitle),
+          headerNote),
+        view !== 'reader' ? null : h('button', {
+          type: 'button',
+          className: `er-glyph${showTranslation ? ' er-glyph-on' : ''}`,
+          title: showTranslation ? t('trans.hide') : t('trans.show'),
+          'aria-label': showTranslation ? t('trans.hide') : t('trans.show'),
+          'aria-pressed': showTranslation ? 'true' : 'false',
+          disabled: total === 0 || translating,
+          onClick: toggleTranslation,
+        }, translating ? h('span', { className: 'er-spin' }) : glyph(ICON.translate, 16)),
+        view !== 'reader' ? null : h('button', {
+          type: 'button', className: 'er-glyph', title: t('header.edit'), 'aria-label': t('header.edit'),
+          onClick: editActive,
+        }, glyph(ICON.edit, 16)),
+        view === 'editor' ? null : h('button', {
+          type: 'button',
+          className: `er-glyph${view === 'library' ? ' er-glyph-on' : ''}`,
+          title: t('header.library'), 'aria-label': t('header.library'),
+          'aria-pressed': view === 'library' ? 'true' : 'false',
+          onClick: () => goView(view === 'library' ? returnView.current : 'library'),
+        }, glyph(ICON.library, 16)),
+        h('button', {
+          type: 'button', className: `er-glyph${view === 'words' ? ' er-glyph-on' : ''}`,
+          title: t('words.title'), 'aria-label': t('words.title'),
+          onClick: () => goView(view === 'words' ? returnView.current : 'words'),
+        }, glyphLine(ICON.book, 16)),
+        h('button', {
+          type: 'button',
+          className: `er-capsule${modelBusy ? ' er-capsule-busy' : ''}`,
+          title: t('settings.title'),
+          ref: capsuleRef,
+          'aria-haspopup': 'dialog',
+          'aria-expanded': settingsOpen ? 'true' : 'false',
+          onClick: () => (settingsOpen ? setSettingsOpen(false) : openSettings()),
+        },
+          modelBusy ? h('span', { className: 'er-dot er-dot-run', 'aria-hidden': true }) : null,
+          h('span', { className: 'er-capsule-text' }, engineLabel),
+          glyph(ICON.caret, 13)))
+  }
+
+  /** The list block, split out so the panel body stays readable. */
+  function renderList(ui) {
+    const { body, column, columnActual, doc, index, key, listRef, node, noticeKey, playAt, renderLine, rowRefs, sentence, sentences, showing, status, t, title, total, translating, translation, voiceLabel, width, zh } = ui
+  return h('div', { className: 'er-body-wrap' },
+        h('div', { className: 'er-scroll er-read', ref: listRef },
+        total === 0
+          ? h('p', { className: 'er-empty' }, t('empty.text'))
+          : h('div', {
+            className: 'er-column',
+            style: { width: `${Math.round(columnActual)}px` },
+          }, sentences.map((sentence, position) => {
+            const dialogue = doc.mode === 'dialogue'
+            const previous = position === 0 ? null : sentences[position - 1]
+            const showMark = dialogue && (previous === null
+              || previous.speaker !== sentence.speaker
+              || previous.slot !== sentence.slot)
+            const newParagraph = previous !== null && previous.paragraph !== sentence.paragraph
+            const name = sentence.speaker ?? (sentence.slot === 1 ? 'B' : 'A')
+            const translated = showing ? translation.lines[position] : undefined
+            return h('button', {
+              key: `${position}-${sentence.text.slice(0, 12)}`,
+              type: 'button',
+              ref: (node) => { rowRefs.current[position] = node },
+              'aria-current': position === index ? 'true' : undefined,
+              className: `er-passage${position === index ? ' er-passage-on' : ''}${position !== index ? ' er-dim' : ''}${newParagraph ? ' er-passage-para' : ''}`,
+              title: dialogue ? `${name} · ${voiceLabel(sentence.slot)}` : undefined,
+              onClick: () => {
+                if ((window.getSelection()?.toString() ?? '') !== '') return
+                void playAt(position)
+              },
+            },
+              dialogue && showMark
+                ? h('span', { className: 'er-mark', 'aria-hidden': true }, name.length <= 2 ? name : name.slice(0, 1))
+                : dialogue ? h('span', { className: 'er-mark', 'aria-hidden': true }) : null,
+              h('span', { className: 'er-body' },
+                h('span', { className: 'er-line', lang: 'en' }, renderLine(sentence, position)),
+                translated === undefined || translated === ''
+                  ? null
+                  : h('span', { className: 'er-trans', lang: translation?.target ?? 'zh-CN' }, translated)))
+          }))))
+
+
+  }
+
+  /** The transport block, split out so the panel body stays readable. */
+  function renderTransport(ui) {
+    const { activeSource, autoNext, count, entry, index, installModel, key, live, loop, model, modelBusy, modelDir, modelLoaded, modelReady, name, nameDraft, next, onKeyDown, openSourceEditor, provider, rate, removeSource, renameSource, renamingSource, setAutoNext, setLoop, setNameDraft, setRate, setRenamingSource, sources, status, step, switchSource, t, title, toggle, total, value, width, translating, noticeKey } = ui
+      const statusText = translating ? t('trans.working')
+        : status === 'loading' ? t('loading')
+          : total === 0 ? ''
+            : `${index + 1} / ${total}`
+
+      const notice = status === 'done' ? t('done')
+        : status === 'paused' ? t('paused')
+          : noticeKey === 'stopped' ? t('stopped')
+            : noticeKey === 'resumed' ? t('resumed', { n: index + 1 })
+              : noticeKey === 'autoplay' ? t('autoplay') : ''
+  return h('div', { className: 'er-transport' },
+        h('button', {
+          type: 'button', className: 'er-glyph', 'aria-label': t('prev'), title: t('prev'),
+          disabled: index === 0, onClick: () => step(-1),
+        }, glyph(ICON.prev, 16)),
+        h('button', {
+          type: 'button', className: 'er-play',
+          'aria-label': status === 'playing' ? t('pause') : t('play'),
+          title: status === 'playing' ? t('pause') : t('play'),
+          'aria-busy': status === 'loading' ? 'true' : undefined,
+          disabled: status === 'loading' || total === 0,
+          onClick: toggle,
+        }, status === 'loading' ? h('span', { className: 'er-spin' }) : glyph(status === 'playing' ? ICON.pause : ICON.play, 17)),
+        h('button', {
+          type: 'button', className: 'er-glyph', 'aria-label': t('next'), title: t('next'),
+          disabled: index + 1 >= total, onClick: () => step(1),
+        }, glyph(ICON.next, 16)),
+        h('button', {
+          type: 'button', className: `er-glyph${loop ? ' er-glyph-on' : ''}`,
+          'aria-label': t('loop'), title: t('loop'),
+          role: 'switch', 'aria-checked': loop ? 'true' : 'false',
+          onClick: () => setLoop((value) => !value),
+        }, glyph(ICON.repeat, 16)),
+        h('button', {
+          type: 'button', className: `er-glyph${autoNext ? ' er-glyph-on' : ''}`,
+          'aria-label': t('autoNext'), title: t('autoNext'),
+          role: 'switch', 'aria-checked': autoNext ? 'true' : 'false',
+          onClick: () => setAutoNext((value) => !value),
+        }, glyph(ICON.chain, 16)),
+        h('span', { className: 'er-grow' }),
+        notice === '' ? null : h('span', { className: 'er-notice-text' }, notice),
+        h('span', { className: 'er-count', role: 'status', 'aria-live': 'polite' }, statusText),
+        h('select', {
+          className: 'er-plain-select er-rate', value: String(rate),
+          'aria-label': t('speed'), title: t('speed'),
+          onChange: (event) => setRate(Number(event.target.value)),
+        }, SPEEDS.map((value) => h('option', { key: value, value: String(value) }, `${value}×`))))
+
+  }
+
+  /** The settingsCard block, split out so the panel body stays readable. */
+  function renderSettingsCard(ui) {
+    const { activeSource, body, card, collinsDraft, collinsReady, collinsSaved, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, entry, id, key, left, list, loadVoices, loadingVoices, maxHeight, model, modelChoices, modelOf, modelsByProvider, name, onKeyDown, provider, rememberVoice, routeOf, routes, row, saveCollinsKey, sections, setAddKind, setAddOpen, setCollinsDraft, setCollinsSaved, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, settingsOpen, sheetPlace, showTranslation, sources, t, title, toggle, toggleSection, toggleTranslation, top, total, translateError, translateModel, translateOptions, translateRoute, translateSource, value, voice, voiceA, voiceB, voiceChoices, voices, voicesListed, width, zh, modelReady, modelBusy, installModel, modelDir, renamingSource } = ui
+
+      // --------------------------------------------------------------- settings
+      // Once the model is usable the facts already say so; this block is only the
+      // in-between state (downloading, loading, or failed).
+      const modelNote = model === null
+        ? h('p', { className: 'er-fine' }, '…')
+        : modelReady
+          ? null
+          : modelBusy
+          ? h('div', { className: 'er-model' },
+            h('div', {
+              className: 'er-meter',
+              role: 'progressbar',
+              'aria-label': t('provider.local'),
+              'aria-valuemin': '0', 'aria-valuemax': '100',
+              'aria-valuenow': String(Math.round((model?.progress ?? 0) * 100)),
+              'aria-valuetext': `${Math.round((model?.progress ?? 0) * 100)}%`,
+            }, h('div', { className: 'er-meter-fill', style: { width: `${Math.max(3, Math.round((model?.progress ?? 0) * 100))}%` } })),
+            h('p', { className: 'er-fine' }, model?.phase === 'loading'
+              ? t('local.loading')
+              : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) })))
+          : h('div', { className: 'er-model' },
+            h('p', { className: 'er-fine' }, model?.phase === 'error'
+              ? `${t('local.failed')}${model?.error === '' ? '' : `: ${String(model.error).slice(0, 60)}`}`
+              : fill(t('local.desc'), { size: megabytes(model?.approximateBytes ?? model?.totalBytes) })),
+            h('button', {
+              type: 'button', className: 'er-cta er-cta-quiet',
+              onClick: installModel,
+            }, model?.phase === 'error' ? t('local.retry') : t('local.download')))
+
+      const field = (label, control) => h('label', { className: 'er-field' },
+        h('span', { className: 'er-field-label' }, label), control)
+
+      const factRow = (label, value) => h('div', { className: 'er-fact' },
+        h('span', { className: 'er-fact-label' }, label),
+        h('span', { className: 'er-fact-value' }, value))
+
+      const localState = model === null ? '…'
+        : modelBusy ? (model?.phase === 'loading' ? t('local.loading') : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) }))
+          : modelReady ? (modelLoaded ? t('local.ready') : t('local.cached'))
+            : model?.phase === 'error' ? t('local.failed')
+              : t('local.notReady')
+
+      const sourceBackend = provider === 'edge' ? t('engine.backend.edge')
+        : provider === 'local' ? t('engine.backend.local')
+          : (activeSource.model !== undefined && activeSource.model !== '' ? activeSource.model : t('source.custom'))
+      const localFolder = activeSource.modelPath !== undefined && activeSource.modelPath !== ''
+        ? activeSource.modelPath
+        : modelDir
+      const sourceLink = provider === 'edge' ? t('engine.connection.edge')
+        : provider === 'local' ? (localFolder !== '' ? shortPath(localFolder) : t('engine.backend.local'))
+          : (activeSource.baseUrl === undefined || activeSource.baseUrl === '' ? t('custom.noEndpoint') : activeSource.baseUrl)
+      const sourceState = provider === 'edge' ? t('state.online')
+        : provider === 'local' ? localState
+          : (activeSource.baseUrl === undefined || activeSource.baseUrl === ''
+            ? t('state.notConfigured')
+            : t('state.configured'))
+
+      /** The source rows: Edge is permanent, the rest can be removed. */
+      const sourceRows = sources.map((entry) => h('li', {
+        key: entry.id,
+        className: `er-source${entry.id === activeSource.id ? ' er-source-on' : ''}`,
+      },
+        h('button', {
+          type: 'button', className: 'er-source-pick',
+          role: 'radio', 'aria-checked': entry.id === activeSource.id ? 'true' : 'false',
+          onClick: () => { if (renamingSource !== entry.id) switchSource(entry.id) },
+        },
+          h('span', { className: 'er-radio', 'aria-hidden': true }),
+          renamingSource === entry.id
+            ? h('input', {
+              className: 'er-input', value: nameDraft, autoFocus: true, spellCheck: false,
+              'aria-label': t('renamePrompt'),
+              onClick: (event) => event.stopPropagation(),
+              onChange: (event) => setNameDraft(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') { event.preventDefault(); void renameSource(entry.id, nameDraft) }
+                if (event.key === 'Escape') { event.preventDefault(); setRenamingSource('') }
+              },
+              onBlur: () => { void renameSource(entry.id, nameDraft) },
+            })
+            : h('span', { className: 'er-source-text' },
+            h('span', { className: 'er-source-name' }, entry.name),
+            h('span', { className: 'er-source-meta' }, entry.kind === 'edge' ? t('source.builtin')
+              : entry.kind === 'local'
+                ? (entry.bundled === true ? t('source.bundled') : shortPath(entry.modelPath ?? ''))
+                : (entry.baseUrl ?? '')))),
+        entry.kind === 'edge' || entry.bundled === true ? null : h('button', {
+          type: 'button', className: 'er-source-act', title: t('editSource'), 'aria-label': t('editSource'),
+          onClick: () => openSourceEditor(entry),
+        }, glyph(ICON.settings, 12)),
+        entry.kind === 'edge' || entry.bundled === true ? null : h('button', {
+          type: 'button', className: 'er-source-del', title: t('delete'), 'aria-label': t('delete'),
+          onClick: () => removeSource(entry.id),
+        }, glyph(ICON.close, 12))))
+  return settingsOpen && sheetPlace !== null ? [
+        h('div', { key: 'catcher', className: 'er-catcher', onMouseDown: () => setSettingsOpen(false) }),
+        h('div', {
+          key: 'card',
+          className: 'er-card',
+          style: {
+            left: `${sheetPlace.left}px`,
+            top: `${sheetPlace.top}px`,
+            width: `${sheetPlace.width}px`,
+            maxHeight: `${sheetPlace.maxHeight ?? 560}px`,
+          },
+          role: 'dialog', 'aria-modal': 'true', 'aria-label': t('settings.title'),
+        },
+          h('div', { className: 'er-card-head' },
+            h('h2', { className: 'er-card-title' }, t('settings.title')),
+            h('span', { className: 'er-card-hint' }, t('settings.hint')),
+            h('button', {
+              type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
+              onClick: () => setSettingsOpen(false),
+            }, glyph(ICON.close, 15))),
+          h('div', { className: 'er-card-body' },
+            h(Section, { title: t('settings.engine'), open: sections.engine === true, onToggle: () => toggleSection('engine') },
+              h('ul', { className: 'er-sources', role: 'radiogroup', 'aria-label': t('source.label') }, sourceRows),
+              h('button', {
+                type: 'button', className: 'er-add',
+                onClick: () => { setAddKind('api'); setAddOpen(true) },
+              }, glyph(ICON.plus, 13), t('source.add')),
+              h('div', { className: 'er-facts' },
+                factRow(t('engine.backend'), sourceBackend),
+                factRow(provider === 'local' ? t('engine.folder') : t('engine.connection'), sourceLink),
+                factRow(t('engine.state'), sourceState)),
+              provider === 'local' ? modelNote : null),
+            h(Section, { title: t('settings.voices'), open: sections.voice === true, onToggle: () => toggleSection('voice') },
+              activeSource.kind !== 'api' ? null : h('datalist', { id: 'er-voice-list' },
+                voiceChoices.map((entry) => h('option', { key: entry.id, value: entry.id },
+                  entry.origin === undefined || entry.origin === 'catalog'
+                    ? entry.label
+                    : `${entry.label} · ${t(entry.origin === 'cloned' ? 'voice.cloned'
+                      : entry.origin === 'manual' ? 'voice.mine' : 'voice.fromEndpoint')}`))),
+              h('div', { className: 'er-pair' },
+                activeSource.kind === 'api'
+                  ? field(t('voice.a'), h('input', {
+                    className: 'er-input', value: voiceA, spellCheck: false, list: 'er-voice-list',
+                    placeholder: voiceChoices.length > 0 ? t('voice.pick') : t('voice.manualPlaceholder'),
+                    onChange: (event) => setVoiceA(event.target.value),
+                  }))
+                  : field(t('voice.a'), h('select', {
+                    className: 'er-select', value: voiceA,
+                    onChange: (event) => setVoiceA(event.target.value),
+                  }, voices.map((voice) => h('option', { key: voice.id, value: voice.id }, voice.label)))),
+                activeSource.kind === 'api'
+                  ? field(t('voice.b'), h('input', {
+                    className: 'er-input', value: voiceB, spellCheck: false, list: 'er-voice-list',
+                    placeholder: voiceChoices.length > 0 ? t('voice.pick') : t('voice.manualPlaceholder'),
+                    onChange: (event) => setVoiceB(event.target.value),
+                  }))
+                  : field(t('voice.b'), h('select', {
+                    className: 'er-select', value: voiceB,
+                    onChange: (event) => setVoiceB(event.target.value),
+                  }, voices.map((voice) => h('option', { key: voice.id, value: voice.id }, voice.label))))),
+              activeSource.kind !== 'api' ? null : h('div', { className: 'er-voice-acts' },
+                h('button', {
+                  type: 'button', className: 'er-add er-add-plain',
+                  disabled: loadingVoices,
+                  onClick: () => { void loadVoices() },
+                }, loadingVoices ? t('voice.loading') : t('voice.refresh')),
+                h('button', {
+                  type: 'button', className: 'er-add er-add-plain',
+                  disabled: voiceA.trim() === '',
+                  onClick: () => { void rememberVoice() },
+                }, t('voice.add'))),
+              activeSource.kind !== 'api' || voicesListed || loadingVoices
+                ? null
+                : h('p', { className: 'er-fine' }, t('voice.manual'))),
+            h(Section, { title: t('settings.dict'), open: sections.dict === true, onToggle: () => toggleSection('dict') },
+              field(t('dict.show'), h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('dict.show') },
+                ['both', 'en', 'zh'].map((kind) => h('button', {
+                  key: kind, type: 'button', role: 'radio',
+                  'aria-checked': dictShow === kind ? 'true' : 'false',
+                  className: 'er-seg-btn',
+                  onClick: () => setDictShow(kind),
+                }, t(`dict.kind.${kind}`))))),
+              field(t('dict.slot.cn'), h('select', {
+                className: 'er-select', value: dictCn,
+                onChange: (event) => setDictCn(event.target.value),
+              }, [
+                ['iciba', t('dict.src.iciba')],
+                ['model', t('dict.src.model')],
+              ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
+              dictCn === 'model' ? h('div', { className: 'er-pair' },
+                field(t('dict.modelProvider'), h('select', {
+                  className: 'er-select', value: routeOf(dictModelCn),
+                  onChange: (event) => setDictModelCn({ provider: event.target.value, model: '' }),
+                }, (routes.length === 0
+                  ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
+                  : routes
+                ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
+                field(t('dict.modelName'), h('select', {
+                  className: 'er-select', value: modelOf(dictModelCn),
+                  onChange: (event) => setDictModelCn({ provider: routeOf(dictModelCn), model: event.target.value }),
+                }, ((modelsByProvider[routeOf(dictModelCn)] ?? []).length === 0
+                  ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
+                  : modelsByProvider[routeOf(dictModelCn)]
+                ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))) : null,
+              field(t('dict.slot.en'), h('select', {
+                className: 'er-select', value: dictEn,
+                onChange: (event) => setDictEn(event.target.value),
+              }, [
+                ['wordnet', t('dict.src.wordnet')],
+                ['wiktionary', t('dict.src.wiktionary')],
+                ['collins', t('dict.src.collins')],
+                ['model', t('dict.src.model')],
+              ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
+              dictEn === 'model' ? h('div', { className: 'er-pair' },
+                field(t('dict.modelProvider'), h('select', {
+                  className: 'er-select', value: routeOf(dictModelEn),
+                  onChange: (event) => setDictModelEn({ provider: event.target.value, model: '' }),
+                }, (routes.length === 0
+                  ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
+                  : routes
+                ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
+                field(t('dict.modelName'), h('select', {
+                  className: 'er-select', value: modelOf(dictModelEn),
+                  onChange: (event) => setDictModelEn({ provider: routeOf(dictModelEn), model: event.target.value }),
+                }, ((modelsByProvider[routeOf(dictModelEn)] ?? []).length === 0
+                  ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
+                  : modelsByProvider[routeOf(dictModelEn)]
+                ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))) : null,
+              !(dictCn === 'collins' || dictEn === 'collins')
+                ? null
+                : h('div', { className: 'er-key-row' },
+                  field(t('dict.collinsKey'), h('input', {
+                    className: 'er-input', type: 'password', value: collinsDraft, spellCheck: false,
+                    placeholder: collinsReady ? t('dict.collinsStored') : t('dict.collinsKeyHint'),
+                    onChange: (event) => { setCollinsDraft(event.target.value); setCollinsSaved(false) },
+                    onKeyDown: (event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCollinsKey() } },
+                  })),
+                  h('button', {
+                    type: 'button', className: 'er-add er-add-plain',
+                    disabled: collinsDraft.trim() === '',
+                    onClick: () => { void saveCollinsKey() },
+                  }, collinsSaved ? t('dict.saved') : t('dict.save')),
+                  h('p', { className: 'er-fine' }, collinsReady ? t('dict.collinsOnHost') : t('dict.collinsMissing'))),
+              h('p', { className: 'er-fine' }, t('dict.kindHint'))),
+            h(Section, { title: t('trans.title'), open: sections.trans === true, onToggle: () => toggleSection('trans') },
+              h('button', {
+                type: 'button', className: 'er-toggle-row',
+                role: 'switch', 'aria-checked': showTranslation ? 'true' : 'false',
+                disabled: total === 0,
+                onClick: toggleTranslation,
+              },
+                h('span', null, t('trans.show')),
+                h('span', { className: `er-track${showTranslation ? ' er-track-on' : ''}`, 'aria-hidden': true },
+                  h('span', { className: 'er-knob' }))),
+              field(t('trans.source'), h('select', {
+                className: 'er-select', value: translateSource,
+                onChange: (event) => setTranslateSource(event.target.value),
+              }, SOURCES.map((id) => {
+                const ready = translateOptions === null
+                  || translateOptions.providers.some((entry) => entry.id === id && entry.ready === true)
+                return h('option', { key: id, value: id, disabled: !ready },
+                  `${t(`trans.${id}`)}${ready ? '' : ` — ${t('trans.unavailable')}`}`)
+              }))),
+              translateSource !== 'dsh' ? null : h('div', { className: 'er-pair' },
+                field(t('trans.provider'), h('select', {
+                  className: 'er-select', value: translateRoute,
+                  onChange: (event) => setTranslateRoute(event.target.value),
+                }, (routes.length === 0
+                  ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
+                  : routes
+                ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
+                field(t('trans.model'), h('select', {
+                  className: 'er-select', value: translateModel?.model ?? '',
+                  onChange: (event) => setTranslateModel((current) => ({
+                    provider: current?.provider ?? translateRoute,
+                    model: event.target.value,
+                  })),
+                }, (modelChoices.length === 0
+                  ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
+                  : modelChoices
+                ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))),
+              translateError === '' ? null : h('p', { className: 'er-fine er-fine-err' }, `${t('trans.failed')}: ${translateError.slice(0, 120)}`)))),
+      ] : null
+
+  }
+
+  /** The addDialog block, split out so the panel body stays readable. */
+  function renderAddDialog(ui) {
+    const { addError, addKind, addOpen, addSource, apiModels, awaitBundled, body, draftBaseUrl, draftId, draftKey, draftModel, draftName, draftPath, draftProtocol, editingSource, entry, fetchModels, fetchingModels, field, installModel, key, model, modelBusy, modelReady, panelHeight, pickModelDir, probe, setAddKind, setAddOpen, setApiModels, setAwaitBundled, setDraftBaseUrl, setDraftId, setDraftKey, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setProbe, status, t, testEndpoint, title, validating, value } = ui
+  return addOpen ? [
+        h('div', { key: 'veil', className: 'er-veil', onMouseDown: () => setAddOpen(false) }),
+        h('div', {
+          key: 'dialog',
+          className: 'er-dialog',
+          role: 'dialog', 'aria-modal': 'true', 'aria-label': t('add.title'),
+        },
+          h('div', { className: 'er-dialog-head' },
+            h('h2', { className: 'er-dialog-title' }, editingSource === '' ? t('add.title') : t('add.editTitle')),
+            h('button', {
+              type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
+              onClick: () => setAddOpen(false),
+            }, glyph(ICON.close, 15))),
+          h('div', { className: 'er-dialog-body' },
+            editingSource !== '' ? null : h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('add.title') },
+              h('button', {
+                type: 'button', role: 'radio', 'aria-checked': addKind === 'api' ? 'true' : 'false',
+                className: 'er-seg-btn', onClick: () => setAddKind('api'),
+              }, t('add.kind.api')),
+              h('button', {
+                type: 'button', role: 'radio', 'aria-checked': addKind === 'local' ? 'true' : 'false',
+                className: 'er-seg-btn', onClick: () => setAddKind('local'),
+              }, t('add.kind.local'))),
+            addKind === 'api'
+              ? h('div', null,
+                field(t('add.id'), h('input', {
+                  className: 'er-input', value: draftId, spellCheck: false, disabled: editingSource !== '',
+                  placeholder: 'my-tts',
+                  onChange: (event) => setDraftId(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')),
+                })),
+                h('p', { className: 'er-fine er-fine-dim' }, t('add.id.hint')),
+                field(t('add.name'), h('input', {
+                  className: 'er-input', value: draftName, spellCheck: false,
+                  placeholder: t('source.custom'),
+                  onChange: (event) => setDraftName(event.target.value),
+                })),
+                field(t('add.protocol'), h('select', {
+                  className: 'er-select', value: draftProtocol,
+                  onChange: (event) => {
+                    setDraftProtocol(event.target.value)
+                    setApiModels([])
+                    setProbe({ state: 'idle', message: '' })
+                  },
+                }, [
+                  ['auto', t('add.protocol.auto')],
+                  ['openai', t('add.protocol.openai')],
+                  ['dashscope', t('add.protocol.dashscope')],
+                  ['azure', t('add.protocol.azure')],
+                ]
+                  .map(([value, label]) => h('option', { key: value, value }, label)))),
+                field(t('custom.baseUrl'), h('input', {
+                  className: 'er-input', value: draftBaseUrl, spellCheck: false,
+                  placeholder: draftProtocol === 'azure'
+                    ? 'https://<region>.tts.speech.microsoft.com/cognitiveservices/v1'
+                    : draftProtocol === 'dashscope'
+                      ? 'https://dashscope.aliyuncs.com'
+                      : 'https://api.example.com/v1',
+                  onChange: (event) => { setDraftBaseUrl(event.target.value); setProbe({ state: 'idle', message: '' }) },
+                })),
+                field(t('add.key'), h('input', {
+                  className: 'er-input', type: 'password', value: draftKey, spellCheck: false,
+                  placeholder: editingSource === '' ? t('add.key.placeholder') : t('custom.keyKeep'),
+                  onChange: (event) => { setDraftKey(event.target.value); setProbe({ state: 'idle', message: '' }) },
+                })),
+                // Connectivity needs the endpoint and the key together, so the test
+                // rides the hint's line, right-aligned and small.
+                h('div', { className: 'er-keyline' },
+                  h('span', { className: 'er-fine er-fine-dim' }, t('add.key.hint')),
+                  h('button', {
+                    type: 'button', className: 'er-bundled-act',
+                    disabled: validating || draftBaseUrl.trim() === '',
+                    onClick: () => { void testEndpoint() },
+                  }, validating ? t('add.testing') : t('add.test'))),
+                probe.state === 'ok' ? h('p', { className: 'er-fine er-probe-ok', role: 'status' }, probe.message) : null,
+                probe.state === 'bad' ? h('p', { className: 'er-fine er-fine-err', role: 'status' }, probe.message) : null,
+                field(t('custom.model'), h('div', { className: 'er-dir' },
+                  apiModels.length === 0
+                    ? h('input', {
+                      className: 'er-input', value: draftModel, spellCheck: false,
+                      placeholder: t('add.modelPlaceholder'),
+                      onChange: (event) => setDraftModel(event.target.value),
+                    })
+                    : h('select', {
+                      className: 'er-select', value: draftModel,
+                      onChange: (event) => setDraftModel(event.target.value),
+                    }, apiModels.map((entry) => h('option', { key: entry.id, value: entry.id }, entry.name))),
+                  h('button', {
+                    type: 'button', className: 'er-cta er-cta-quiet',
+                    disabled: fetchingModels || draftProtocol === 'azure',
+                    onClick: () => { void fetchModels() },
+                  }, fetchingModels ? t('add.fetching') : t('add.fetchModels')))))
+
+              : h('div', null,
+                field(t('add.name'), h('input', {
+                  className: 'er-input', value: draftName, spellCheck: false,
+                  placeholder: t('source.local.short'),
+                  onChange: (event) => setDraftName(event.target.value),
+                })),
+                field(t('add.dir'), h('div', { className: 'er-dir' },
+                  h('input', {
+                    className: 'er-input', value: draftPath, spellCheck: false,
+                    placeholder: t('add.dir.placeholder'),
+                    onChange: (event) => setDraftPath(event.target.value),
+                  }),
+                  h('button', {
+                    type: 'button', className: 'er-cta er-cta-quiet',
+                    onClick: () => { void pickModelDir() },
+                  }, t('add.pick')))),
+                h('p', { className: 'er-fine' }, t('add.dir.hint')),
+                // The bundled model is the fallback, so it sits under the folder
+                // field: one compact line with a state dot and its action.
+                h('div', { className: 'er-bundled' },
+                  h('span', {
+                    className: `er-dot ${modelReady ? 'er-dot-ok' : modelBusy ? 'er-dot-busy' : 'er-dot-bad'}`,
+                    'aria-hidden': true,
+                  }),
+                  h('span', { className: 'er-bundled-title' }, t('add.bundled.title')),
+                  h('span', { className: 'er-bundled-meta' }, modelReady
+                    ? t('add.bundled.downloaded')
+                    : modelBusy
+                      ? fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) })
+                      : megabytes(model?.approximateBytes ?? model?.totalBytes)),
+                  h('span', { className: 'er-grow' }),
+                  modelReady
+                    ? h('span', { className: 'er-bundled-done' }, t('add.bundled.added'))
+                    : modelBusy || awaitBundled
+                      ? h('span', { className: 'er-bundled-done' }, `${Math.round((model?.progress ?? 0) * 100)}%`)
+                      : h('button', {
+                        type: 'button', className: 'er-bundled-act',
+                        onClick: () => { setAwaitBundled(true); installModel() },
+                      }, t('add.bundled.download'))))),
+          addError === '' ? null : h('p', { className: 'er-dialog-error', role: 'alert' }, addError),
+          h('div', { className: 'er-dialog-foot' },
+            h('button', {
+              type: 'button', className: 'er-cta er-cta-quiet',
+              onClick: () => setAddOpen(false),
+            }, t('cancel')),
+            h('button', {
+              type: 'button', className: 'er-cta er-cta-strong',
+              // Nothing to attach means nothing to add: the bundled model is
+              // downloaded from its own row, not from an empty folder.
+              disabled: validating
+                || (addKind === 'api'
+                  ? draftBaseUrl.trim() === '' || draftId.trim() === ''
+                  : draftPath.trim() === ''),
+              onClick: () => { void addSource() },
+            }, validating ? t('add.validating') : (editingSource === '' ? t('add.add') : t('add.save'))))),
+      ] : null
+
+      /** One floating card serves the right-click lookup and the pinned dialog. */
+      const cardHeight = Math.max(180, Math.min(panelHeight - 24, 420))
+  }
+
+  /** The wordCard block, split out so the panel body stays readable. */
+  function renderWordCard(ui) {
+    const { at, body, card, cardEntry, cardError, cardHeight, cardState, dict, item, key, left, lookUp, maxHeight, onKeyDown, panelHeight, panelWidth, query, ready, right, saveWord, sayingKey, setCard, setQuery, speak, t, title, top, value, word, words } = ui
+  return card === null ? null : h('div', {
+        className: `er-wordcard${card.pinned ? ' er-wordcard-pin' : ''}`,
+        style: card.pinned
+          ? { right: '12px', top: '12px', maxHeight: `${cardHeight}px` }
+          : {
+            left: `${Math.max(8, Math.min(card.x, Math.max(8, panelWidth - 272)))}px`,
+            top: `${Math.max(8, Math.min(card.y, Math.max(8, panelHeight - cardHeight - 8)))}px`,
+            maxHeight: `${cardHeight}px`,
+          },
+        role: 'dialog', 'aria-label': t('dict.title'),
+        onMouseDown: (event) => event.stopPropagation(),
+        onContextMenu: (event) => event.preventDefault(),
+      },
+        h('div', { className: 'er-wordcard-head' },
+          card.pinned
+            ? h('input', {
+              className: 'er-input', value: query, autoFocus: true, spellCheck: false,
+              placeholder: t('dict.placeholder'), 'aria-label': t('dict.title'),
+              onChange: (event) => setQuery(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') { event.preventDefault(); void lookUp(query) }
+                if (event.key === 'Escape') { event.preventDefault(); setCard(null) }
+              },
+            })
+            : h('span', { className: 'er-wordcard-word' }, cardEntry?.word ?? card.word),
+          h('button', {
+            type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
+            onClick: () => setCard(null),
+          }, glyph(ICON.close, 14))),
+        cardState === 'loading'
+          ? h('p', { className: 'er-wordcard-note' }, t('dict.loading'))
+          : cardState === 'failed'
+            ? h('p', { className: 'er-wordcard-note er-fine-err' }, cardError)
+            : cardState === 'missing'
+              ? h('p', { className: 'er-wordcard-note' }, t('dict.missing'))
+              : cardEntry === null
+                ? h('p', { className: 'er-wordcard-note' }, t('dict.placeholder'))
+                : h('div', { className: 'er-wordcard-body' },
+                  cardEntry.phonetic === '' ? null : h('div', { className: 'er-wordcard-ph' }, cardEntry.phonetic),
+                  (cardEntry.senses ?? []).map((sense, at) => h('div', { key: at, className: 'er-sense' },
+                    h('div', { className: 'er-sense-line' },
+                      sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
+                      h('span', null, sense.def)),
+                    sense.example === ''
+                      ? null
+                      : h('div', { className: 'er-sense-eg' },
+                        h('span', null, sense.example),
+                        h('button', {
+                          type: 'button',
+                          className: `er-say${sayingKey === `c:${at}` ? ' er-say-on' : ''}`,
+                          title: t('words.sayExample'), 'aria-label': t('words.sayExample'),
+                          onClick: () => { void speak(sense.example, `c:${at}`) },
+                        }, glyph(ICON.speaker, 12))))),
+                  Array.isArray(cardEntry.translation) && cardEntry.translation.length > 0
+                    ? h('div', { className: 'er-wordcard-tr' }, cardEntry.translation.map((sense, at) => h('div', {
+                      key: at, className: 'er-wordcard-trline',
+                    },
+                      sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
+                      h('span', null, sense.def))))
+                    : null,
+                  h('div', { className: 'er-wordcard-foot' },
+                    cardState === 'ready' ? h('button', {
+                      type: 'button', className: 'er-add er-add-plain',
+                      onClick: () => saveWord({ ...cardEntry, word: cardEntry.word }),
+                    }, words.some((item) => item.id === String(cardEntry.word).toLowerCase()) ? t('dict.saved') : t('dict.save')) : null)))
+
+      // ------------------------------------------------------------------ body
+  }
+
+  /** The errorBar block, split out so the panel body stays readable. */
+  function renderErrorBar(ui) {
+    const { errorKind, fontDraft, index, installModel, notice, playAt, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, t, widthDraft } = ui
+  return errorKind === ''
+        ? null
+        : h('div', { className: 'er-notice er-notice-err', role: 'alert' },
+          h('span', null, t(`error.${errorKind}`)),
+          errorKind === 'notInstalled'
+            ? h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: installModel }, t('local.download'))
+            : errorKind === 'preparing'
+              ? null
+              : h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: () => { void playAt(index) } }, t('retry')))
+
+      /** Commit whatever the custom field holds, ignoring nonsense. */
+      const commitWidth = () => {
+        const value = Math.round(Number(widthDraft))
+        setEditingWidth(false)
+        if (!Number.isFinite(value)) return
+        setCustomPct(Math.min(100, Math.max(20, value)))
+      }
+      const commitFont = () => {
+        const value = Math.round(Number(fontDraft))
+        setEditingFont(false)
+        if (!Number.isFinite(value)) return
+        setCustomPx(Math.min(40, Math.max(11, value)))
+      }
+
+      /** Two segmented controls, in the same shape as the rest of the panel. */
+  }
+
+  /** The displayBar block, split out so the panel body stays readable. */
+  function renderDisplayBar(ui) {
+    const { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, at, columnWidth, commitFont, commitWidth, customPct, customPx, dict, editingFont, editingWidth, entry, fontDraft, fontScale, id, item, key, loadWordEntry, onKeyDown, openTokenRef, openWordId, setCard, setCardEntry, setCardState, setColumnWidth, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setOpenEntry, setOpenLoading, setOpenWordId, setQuery, setRemoved, setWidthDraft, setWords, step, t, title, value, view, widthDraft, word, wordFilter, words } = ui
+  return view === 'editor' ? null : h('div', { className: 'er-display' },
+        editingWidth
+          ? h('div', { className: 'er-custom' },
+            h('input', {
+              className: 'er-input er-custom-input', type: 'number', min: '20', max: '100',
+              value: widthDraft, autoFocus: true, 'aria-label': t('display.widthCustom'),
+              placeholder: String(Math.round(customPct > 0 ? customPct : 100)),
+              onChange: (event) => setWidthDraft(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') { event.preventDefault(); commitWidth() }
+                if (event.key === 'Escape') { event.preventDefault(); setEditingWidth(false) }
+              },
+              onBlur: commitWidth,
+            }),
+            h('span', { className: 'er-custom-unit' }, t('display.percent')))
+          : h('div', { className: 'er-seg er-seg-sm', role: 'radiogroup', 'aria-label': t('display.width') },
+            WIDTH_STEPS.map((step) => h('button', {
+              key: step.id, type: 'button', role: 'radio',
+              'aria-checked': customPct === 0
+                && (columnWidth === step.px || (columnWidth === 0 && step.px === DEFAULT_WIDTH)) ? 'true' : 'false',
+              className: 'er-seg-btn',
+              onClick: () => { setCustomPct(0); setColumnWidth(step.px) },
+            }, t(`display.width.${step.id}`))),
+            h('button', {
+              type: 'button', role: 'radio',
+              'aria-checked': customPct > 0 ? 'true' : 'false',
+              className: 'er-seg-btn',
+              onClick: () => { setWidthDraft(String(customPct > 0 ? customPct : 100)); setEditingWidth(true) },
+            }, t('display.custom'))),
+        editingFont
+          ? h('div', { className: 'er-custom' },
+            h('input', {
+              className: 'er-input er-custom-input', type: 'number', min: '11', max: '40',
+              value: fontDraft, autoFocus: true, 'aria-label': t('display.fontCustom'),
+              placeholder: String(Math.round(customPx > 0 ? customPx : 14)),
+              onChange: (event) => setFontDraft(event.target.value),
+              onKeyDown: (event) => {
+                if (event.key === 'Enter') { event.preventDefault(); commitFont() }
+                if (event.key === 'Escape') { event.preventDefault(); setEditingFont(false) }
+              },
+              onBlur: commitFont,
+            }),
+            h('span', { className: 'er-custom-unit' }, t('display.px')))
+          : h('div', { className: 'er-seg er-seg-sm', role: 'radiogroup', 'aria-label': t('display.font') },
+            FONT_STEPS.map((step) => h('button', {
+              key: step.id, type: 'button', role: 'radio',
+              'aria-checked': customPx === 0 && Math.abs(fontScale - step.scale) < 0.01 ? 'true' : 'false',
+              className: 'er-seg-btn',
+              onClick: () => { setCustomPx(0); setFontScale(step.scale) },
+            }, t(`display.font.${step.id}`))),
+            h('button', {
+              type: 'button', role: 'radio',
+              'aria-checked': customPx > 0 ? 'true' : 'false',
+              className: 'er-seg-btn',
+              onClick: () => { setFontDraft(String(customPx > 0 ? customPx : 14)); setEditingFont(true) },
+            }, t('display.custom'))),
+        h('button', {
+          type: 'button', className: 'er-glyph er-display-dict',
+          title: t('dict.title'), 'aria-label': t('dict.title'),
+          onClick: () => {
+            setQuery('')
+            setCardEntry(null)
+            setCardState('idle')
+            setCard({ word: '', x: 0, y: 0, pinned: true })
+          },
+        }, glyphLine(ICON.book, 16)))
+
+      // Everything the three page views read from the panel's state.
+
+
+  }
+
     function ReaderBody(props) {
       const { pickDirectory } = props
       const localeId = useSnapshot(props.localeSource.subscribe, props.localeSource.getSnapshot)
@@ -2894,47 +3654,6 @@ function mergeStates(local, remote) {
         }, h('span', { className: 'er-back-arrow', 'aria-hidden': true }, '\u2190'), h('span', null, t('backRow')))
         : headerMeta === '' ? null : h('div', { className: 'er-meta' }, headerMeta)
 
-      const header = h('div', { className: 'er-head' },
-        h('div', { className: 'er-head-text' },
-          h('div', { className: 'er-title' }, headerTitle),
-          headerNote),
-        view !== 'reader' ? null : h('button', {
-          type: 'button',
-          className: `er-glyph${showTranslation ? ' er-glyph-on' : ''}`,
-          title: showTranslation ? t('trans.hide') : t('trans.show'),
-          'aria-label': showTranslation ? t('trans.hide') : t('trans.show'),
-          'aria-pressed': showTranslation ? 'true' : 'false',
-          disabled: total === 0 || translating,
-          onClick: toggleTranslation,
-        }, translating ? h('span', { className: 'er-spin' }) : glyph(ICON.translate, 16)),
-        view !== 'reader' ? null : h('button', {
-          type: 'button', className: 'er-glyph', title: t('header.edit'), 'aria-label': t('header.edit'),
-          onClick: editActive,
-        }, glyph(ICON.edit, 16)),
-        view === 'editor' ? null : h('button', {
-          type: 'button',
-          className: `er-glyph${view === 'library' ? ' er-glyph-on' : ''}`,
-          title: t('header.library'), 'aria-label': t('header.library'),
-          'aria-pressed': view === 'library' ? 'true' : 'false',
-          onClick: () => goView(view === 'library' ? returnView.current : 'library'),
-        }, glyph(ICON.library, 16)),
-        h('button', {
-          type: 'button', className: `er-glyph${view === 'words' ? ' er-glyph-on' : ''}`,
-          title: t('words.title'), 'aria-label': t('words.title'),
-          onClick: () => goView(view === 'words' ? returnView.current : 'words'),
-        }, glyphLine(ICON.book, 16)),
-        h('button', {
-          type: 'button',
-          className: `er-capsule${modelBusy ? ' er-capsule-busy' : ''}`,
-          title: t('settings.title'),
-          ref: capsuleRef,
-          'aria-haspopup': 'dialog',
-          'aria-expanded': settingsOpen ? 'true' : 'false',
-          onClick: () => (settingsOpen ? setSettingsOpen(false) : openSettings()),
-        },
-          modelBusy ? h('span', { className: 'er-dot er-dot-run', 'aria-hidden': true }) : null,
-          h('span', { className: 'er-capsule-text' }, engineLabel),
-          glyph(ICON.caret, 13)))
 
       const renderLine = (sentence, position) => {
         if (position !== index) return sentence.text
@@ -2959,683 +3678,6 @@ function mergeStates(local, remote) {
       }
 
       const showing = showTranslation && translation !== null
-      const list = h('div', { className: 'er-body-wrap' },
-        h('div', { className: 'er-scroll er-read', ref: listRef },
-        total === 0
-          ? h('p', { className: 'er-empty' }, t('empty.text'))
-          : h('div', {
-            className: 'er-column',
-            style: { width: `${Math.round(columnActual)}px` },
-          }, sentences.map((sentence, position) => {
-            const dialogue = doc.mode === 'dialogue'
-            const previous = position === 0 ? null : sentences[position - 1]
-            const showMark = dialogue && (previous === null
-              || previous.speaker !== sentence.speaker
-              || previous.slot !== sentence.slot)
-            const newParagraph = previous !== null && previous.paragraph !== sentence.paragraph
-            const name = sentence.speaker ?? (sentence.slot === 1 ? 'B' : 'A')
-            const translated = showing ? translation.lines[position] : undefined
-            return h('button', {
-              key: `${position}-${sentence.text.slice(0, 12)}`,
-              type: 'button',
-              ref: (node) => { rowRefs.current[position] = node },
-              'aria-current': position === index ? 'true' : undefined,
-              className: `er-passage${position === index ? ' er-passage-on' : ''}${position !== index ? ' er-dim' : ''}${newParagraph ? ' er-passage-para' : ''}`,
-              title: dialogue ? `${name} · ${voiceLabel(sentence.slot)}` : undefined,
-              onClick: () => {
-                if ((window.getSelection()?.toString() ?? '') !== '') return
-                void playAt(position)
-              },
-            },
-              dialogue && showMark
-                ? h('span', { className: 'er-mark', 'aria-hidden': true }, name.length <= 2 ? name : name.slice(0, 1))
-                : dialogue ? h('span', { className: 'er-mark', 'aria-hidden': true }) : null,
-              h('span', { className: 'er-body' },
-                h('span', { className: 'er-line', lang: 'en' }, renderLine(sentence, position)),
-                translated === undefined || translated === ''
-                  ? null
-                  : h('span', { className: 'er-trans', lang: translation?.target ?? 'zh-CN' }, translated)))
-          }))))
-
-      const statusText = translating ? t('trans.working')
-        : status === 'loading' ? t('loading')
-          : total === 0 ? ''
-            : `${index + 1} / ${total}`
-
-      const notice = status === 'done' ? t('done')
-        : status === 'paused' ? t('paused')
-          : noticeKey === 'stopped' ? t('stopped')
-            : noticeKey === 'resumed' ? t('resumed', { n: index + 1 })
-              : noticeKey === 'autoplay' ? t('autoplay') : ''
-
-      const transport = h('div', { className: 'er-transport' },
-        h('button', {
-          type: 'button', className: 'er-glyph', 'aria-label': t('prev'), title: t('prev'),
-          disabled: index === 0, onClick: () => step(-1),
-        }, glyph(ICON.prev, 16)),
-        h('button', {
-          type: 'button', className: 'er-play',
-          'aria-label': status === 'playing' ? t('pause') : t('play'),
-          title: status === 'playing' ? t('pause') : t('play'),
-          'aria-busy': status === 'loading' ? 'true' : undefined,
-          disabled: status === 'loading' || total === 0,
-          onClick: toggle,
-        }, status === 'loading' ? h('span', { className: 'er-spin' }) : glyph(status === 'playing' ? ICON.pause : ICON.play, 17)),
-        h('button', {
-          type: 'button', className: 'er-glyph', 'aria-label': t('next'), title: t('next'),
-          disabled: index + 1 >= total, onClick: () => step(1),
-        }, glyph(ICON.next, 16)),
-        h('button', {
-          type: 'button', className: `er-glyph${loop ? ' er-glyph-on' : ''}`,
-          'aria-label': t('loop'), title: t('loop'),
-          role: 'switch', 'aria-checked': loop ? 'true' : 'false',
-          onClick: () => setLoop((value) => !value),
-        }, glyph(ICON.repeat, 16)),
-        h('button', {
-          type: 'button', className: `er-glyph${autoNext ? ' er-glyph-on' : ''}`,
-          'aria-label': t('autoNext'), title: t('autoNext'),
-          role: 'switch', 'aria-checked': autoNext ? 'true' : 'false',
-          onClick: () => setAutoNext((value) => !value),
-        }, glyph(ICON.chain, 16)),
-        h('span', { className: 'er-grow' }),
-        notice === '' ? null : h('span', { className: 'er-notice-text' }, notice),
-        h('span', { className: 'er-count', role: 'status', 'aria-live': 'polite' }, statusText),
-        h('select', {
-          className: 'er-plain-select er-rate', value: String(rate),
-          'aria-label': t('speed'), title: t('speed'),
-          onChange: (event) => setRate(Number(event.target.value)),
-        }, SPEEDS.map((value) => h('option', { key: value, value: String(value) }, `${value}×`))))
-
-      // --------------------------------------------------------------- settings
-      // Once the model is usable the facts already say so; this block is only the
-      // in-between state (downloading, loading, or failed).
-      const modelNote = model === null
-        ? h('p', { className: 'er-fine' }, '…')
-        : modelReady
-          ? null
-          : modelBusy
-          ? h('div', { className: 'er-model' },
-            h('div', {
-              className: 'er-meter',
-              role: 'progressbar',
-              'aria-label': t('provider.local'),
-              'aria-valuemin': '0', 'aria-valuemax': '100',
-              'aria-valuenow': String(Math.round((model?.progress ?? 0) * 100)),
-              'aria-valuetext': `${Math.round((model?.progress ?? 0) * 100)}%`,
-            }, h('div', { className: 'er-meter-fill', style: { width: `${Math.max(3, Math.round((model?.progress ?? 0) * 100))}%` } })),
-            h('p', { className: 'er-fine' }, model?.phase === 'loading'
-              ? t('local.loading')
-              : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) })))
-          : h('div', { className: 'er-model' },
-            h('p', { className: 'er-fine' }, model?.phase === 'error'
-              ? `${t('local.failed')}${model?.error === '' ? '' : `: ${String(model.error).slice(0, 60)}`}`
-              : fill(t('local.desc'), { size: megabytes(model?.approximateBytes ?? model?.totalBytes) })),
-            h('button', {
-              type: 'button', className: 'er-cta er-cta-quiet',
-              onClick: installModel,
-            }, model?.phase === 'error' ? t('local.retry') : t('local.download')))
-
-      const field = (label, control) => h('label', { className: 'er-field' },
-        h('span', { className: 'er-field-label' }, label), control)
-
-      const factRow = (label, value) => h('div', { className: 'er-fact' },
-        h('span', { className: 'er-fact-label' }, label),
-        h('span', { className: 'er-fact-value' }, value))
-
-      const localState = model === null ? '…'
-        : modelBusy ? (model?.phase === 'loading' ? t('local.loading') : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) }))
-          : modelReady ? (modelLoaded ? t('local.ready') : t('local.cached'))
-            : model?.phase === 'error' ? t('local.failed')
-              : t('local.notReady')
-
-      const sourceBackend = provider === 'edge' ? t('engine.backend.edge')
-        : provider === 'local' ? t('engine.backend.local')
-          : (activeSource.model !== undefined && activeSource.model !== '' ? activeSource.model : t('source.custom'))
-      const localFolder = activeSource.modelPath !== undefined && activeSource.modelPath !== ''
-        ? activeSource.modelPath
-        : modelDir
-      const sourceLink = provider === 'edge' ? t('engine.connection.edge')
-        : provider === 'local' ? (localFolder !== '' ? shortPath(localFolder) : t('engine.backend.local'))
-          : (activeSource.baseUrl === undefined || activeSource.baseUrl === '' ? t('custom.noEndpoint') : activeSource.baseUrl)
-      const sourceState = provider === 'edge' ? t('state.online')
-        : provider === 'local' ? localState
-          : (activeSource.baseUrl === undefined || activeSource.baseUrl === ''
-            ? t('state.notConfigured')
-            : t('state.configured'))
-
-      /** The source rows: Edge is permanent, the rest can be removed. */
-      const sourceRows = sources.map((entry) => h('li', {
-        key: entry.id,
-        className: `er-source${entry.id === activeSource.id ? ' er-source-on' : ''}`,
-      },
-        h('button', {
-          type: 'button', className: 'er-source-pick',
-          role: 'radio', 'aria-checked': entry.id === activeSource.id ? 'true' : 'false',
-          onClick: () => { if (renamingSource !== entry.id) switchSource(entry.id) },
-        },
-          h('span', { className: 'er-radio', 'aria-hidden': true }),
-          renamingSource === entry.id
-            ? h('input', {
-              className: 'er-input', value: nameDraft, autoFocus: true, spellCheck: false,
-              'aria-label': t('renamePrompt'),
-              onClick: (event) => event.stopPropagation(),
-              onChange: (event) => setNameDraft(event.target.value),
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') { event.preventDefault(); void renameSource(entry.id, nameDraft) }
-                if (event.key === 'Escape') { event.preventDefault(); setRenamingSource('') }
-              },
-              onBlur: () => { void renameSource(entry.id, nameDraft) },
-            })
-            : h('span', { className: 'er-source-text' },
-            h('span', { className: 'er-source-name' }, entry.name),
-            h('span', { className: 'er-source-meta' }, entry.kind === 'edge' ? t('source.builtin')
-              : entry.kind === 'local'
-                ? (entry.bundled === true ? t('source.bundled') : shortPath(entry.modelPath ?? ''))
-                : (entry.baseUrl ?? '')))),
-        entry.kind === 'edge' || entry.bundled === true ? null : h('button', {
-          type: 'button', className: 'er-source-act', title: t('editSource'), 'aria-label': t('editSource'),
-          onClick: () => openSourceEditor(entry),
-        }, glyph(ICON.settings, 12)),
-        entry.kind === 'edge' || entry.bundled === true ? null : h('button', {
-          type: 'button', className: 'er-source-del', title: t('delete'), 'aria-label': t('delete'),
-          onClick: () => removeSource(entry.id),
-        }, glyph(ICON.close, 12))))
-
-      const settingsCard = settingsOpen && sheetPlace !== null ? [
-        h('div', { key: 'catcher', className: 'er-catcher', onMouseDown: () => setSettingsOpen(false) }),
-        h('div', {
-          key: 'card',
-          className: 'er-card',
-          style: {
-            left: `${sheetPlace.left}px`,
-            top: `${sheetPlace.top}px`,
-            width: `${sheetPlace.width}px`,
-            maxHeight: `${sheetPlace.maxHeight ?? 560}px`,
-          },
-          role: 'dialog', 'aria-modal': 'true', 'aria-label': t('settings.title'),
-        },
-          h('div', { className: 'er-card-head' },
-            h('h2', { className: 'er-card-title' }, t('settings.title')),
-            h('span', { className: 'er-card-hint' }, t('settings.hint')),
-            h('button', {
-              type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
-              onClick: () => setSettingsOpen(false),
-            }, glyph(ICON.close, 15))),
-          h('div', { className: 'er-card-body' },
-            h(Section, { title: t('settings.engine'), open: sections.engine === true, onToggle: () => toggleSection('engine') },
-              h('ul', { className: 'er-sources', role: 'radiogroup', 'aria-label': t('source.label') }, sourceRows),
-              h('button', {
-                type: 'button', className: 'er-add',
-                onClick: () => { setAddKind('api'); setAddOpen(true) },
-              }, glyph(ICON.plus, 13), t('source.add')),
-              h('div', { className: 'er-facts' },
-                factRow(t('engine.backend'), sourceBackend),
-                factRow(provider === 'local' ? t('engine.folder') : t('engine.connection'), sourceLink),
-                factRow(t('engine.state'), sourceState)),
-              provider === 'local' ? modelNote : null),
-            h(Section, { title: t('settings.voices'), open: sections.voice === true, onToggle: () => toggleSection('voice') },
-              activeSource.kind !== 'api' ? null : h('datalist', { id: 'er-voice-list' },
-                voiceChoices.map((entry) => h('option', { key: entry.id, value: entry.id },
-                  entry.origin === undefined || entry.origin === 'catalog'
-                    ? entry.label
-                    : `${entry.label} · ${t(entry.origin === 'cloned' ? 'voice.cloned'
-                      : entry.origin === 'manual' ? 'voice.mine' : 'voice.fromEndpoint')}`))),
-              h('div', { className: 'er-pair' },
-                activeSource.kind === 'api'
-                  ? field(t('voice.a'), h('input', {
-                    className: 'er-input', value: voiceA, spellCheck: false, list: 'er-voice-list',
-                    placeholder: voiceChoices.length > 0 ? t('voice.pick') : t('voice.manualPlaceholder'),
-                    onChange: (event) => setVoiceA(event.target.value),
-                  }))
-                  : field(t('voice.a'), h('select', {
-                    className: 'er-select', value: voiceA,
-                    onChange: (event) => setVoiceA(event.target.value),
-                  }, voices.map((voice) => h('option', { key: voice.id, value: voice.id }, voice.label)))),
-                activeSource.kind === 'api'
-                  ? field(t('voice.b'), h('input', {
-                    className: 'er-input', value: voiceB, spellCheck: false, list: 'er-voice-list',
-                    placeholder: voiceChoices.length > 0 ? t('voice.pick') : t('voice.manualPlaceholder'),
-                    onChange: (event) => setVoiceB(event.target.value),
-                  }))
-                  : field(t('voice.b'), h('select', {
-                    className: 'er-select', value: voiceB,
-                    onChange: (event) => setVoiceB(event.target.value),
-                  }, voices.map((voice) => h('option', { key: voice.id, value: voice.id }, voice.label))))),
-              activeSource.kind !== 'api' ? null : h('div', { className: 'er-voice-acts' },
-                h('button', {
-                  type: 'button', className: 'er-add er-add-plain',
-                  disabled: loadingVoices,
-                  onClick: () => { void loadVoices() },
-                }, loadingVoices ? t('voice.loading') : t('voice.refresh')),
-                h('button', {
-                  type: 'button', className: 'er-add er-add-plain',
-                  disabled: voiceA.trim() === '',
-                  onClick: () => { void rememberVoice() },
-                }, t('voice.add'))),
-              activeSource.kind !== 'api' || voicesListed || loadingVoices
-                ? null
-                : h('p', { className: 'er-fine' }, t('voice.manual'))),
-            h(Section, { title: t('settings.dict'), open: sections.dict === true, onToggle: () => toggleSection('dict') },
-              field(t('dict.show'), h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('dict.show') },
-                ['both', 'en', 'zh'].map((kind) => h('button', {
-                  key: kind, type: 'button', role: 'radio',
-                  'aria-checked': dictShow === kind ? 'true' : 'false',
-                  className: 'er-seg-btn',
-                  onClick: () => setDictShow(kind),
-                }, t(`dict.kind.${kind}`))))),
-              field(t('dict.slot.cn'), h('select', {
-                className: 'er-select', value: dictCn,
-                onChange: (event) => setDictCn(event.target.value),
-              }, [
-                ['iciba', t('dict.src.iciba')],
-                ['model', t('dict.src.model')],
-              ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
-              dictCn === 'model' ? h('div', { className: 'er-pair' },
-                field(t('dict.modelProvider'), h('select', {
-                  className: 'er-select', value: routeOf(dictModelCn),
-                  onChange: (event) => setDictModelCn({ provider: event.target.value, model: '' }),
-                }, (routes.length === 0
-                  ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
-                  : routes
-                ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
-                field(t('dict.modelName'), h('select', {
-                  className: 'er-select', value: modelOf(dictModelCn),
-                  onChange: (event) => setDictModelCn({ provider: routeOf(dictModelCn), model: event.target.value }),
-                }, ((modelsByProvider[routeOf(dictModelCn)] ?? []).length === 0
-                  ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
-                  : modelsByProvider[routeOf(dictModelCn)]
-                ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))) : null,
-              field(t('dict.slot.en'), h('select', {
-                className: 'er-select', value: dictEn,
-                onChange: (event) => setDictEn(event.target.value),
-              }, [
-                ['wordnet', t('dict.src.wordnet')],
-                ['wiktionary', t('dict.src.wiktionary')],
-                ['collins', t('dict.src.collins')],
-                ['model', t('dict.src.model')],
-              ].map(([id, label]) => h('option', { key: id, value: id }, label)))),
-              dictEn === 'model' ? h('div', { className: 'er-pair' },
-                field(t('dict.modelProvider'), h('select', {
-                  className: 'er-select', value: routeOf(dictModelEn),
-                  onChange: (event) => setDictModelEn({ provider: event.target.value, model: '' }),
-                }, (routes.length === 0
-                  ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
-                  : routes
-                ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
-                field(t('dict.modelName'), h('select', {
-                  className: 'er-select', value: modelOf(dictModelEn),
-                  onChange: (event) => setDictModelEn({ provider: routeOf(dictModelEn), model: event.target.value }),
-                }, ((modelsByProvider[routeOf(dictModelEn)] ?? []).length === 0
-                  ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
-                  : modelsByProvider[routeOf(dictModelEn)]
-                ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))) : null,
-              !(dictCn === 'collins' || dictEn === 'collins')
-                ? null
-                : h('div', { className: 'er-key-row' },
-                  field(t('dict.collinsKey'), h('input', {
-                    className: 'er-input', type: 'password', value: collinsDraft, spellCheck: false,
-                    placeholder: collinsReady ? t('dict.collinsStored') : t('dict.collinsKeyHint'),
-                    onChange: (event) => { setCollinsDraft(event.target.value); setCollinsSaved(false) },
-                    onKeyDown: (event) => { if (event.key === 'Enter') { event.preventDefault(); void saveCollinsKey() } },
-                  })),
-                  h('button', {
-                    type: 'button', className: 'er-add er-add-plain',
-                    disabled: collinsDraft.trim() === '',
-                    onClick: () => { void saveCollinsKey() },
-                  }, collinsSaved ? t('dict.saved') : t('dict.save')),
-                  h('p', { className: 'er-fine' }, collinsReady ? t('dict.collinsOnHost') : t('dict.collinsMissing'))),
-              h('p', { className: 'er-fine' }, t('dict.kindHint'))),
-            h(Section, { title: t('trans.title'), open: sections.trans === true, onToggle: () => toggleSection('trans') },
-              h('button', {
-                type: 'button', className: 'er-toggle-row',
-                role: 'switch', 'aria-checked': showTranslation ? 'true' : 'false',
-                disabled: total === 0,
-                onClick: toggleTranslation,
-              },
-                h('span', null, t('trans.show')),
-                h('span', { className: `er-track${showTranslation ? ' er-track-on' : ''}`, 'aria-hidden': true },
-                  h('span', { className: 'er-knob' }))),
-              field(t('trans.source'), h('select', {
-                className: 'er-select', value: translateSource,
-                onChange: (event) => setTranslateSource(event.target.value),
-              }, SOURCES.map((id) => {
-                const ready = translateOptions === null
-                  || translateOptions.providers.some((entry) => entry.id === id && entry.ready === true)
-                return h('option', { key: id, value: id, disabled: !ready },
-                  `${t(`trans.${id}`)}${ready ? '' : ` — ${t('trans.unavailable')}`}`)
-              }))),
-              translateSource !== 'dsh' ? null : h('div', { className: 'er-pair' },
-                field(t('trans.provider'), h('select', {
-                  className: 'er-select', value: translateRoute,
-                  onChange: (event) => setTranslateRoute(event.target.value),
-                }, (routes.length === 0
-                  ? [{ provider: translateOptions?.model?.provider ?? '', name: translateOptions?.model?.provider ?? '—' }]
-                  : routes
-                ).map((entry) => h('option', { key: entry.provider, value: entry.provider }, entry.name ?? entry.provider)))),
-                field(t('trans.model'), h('select', {
-                  className: 'er-select', value: translateModel?.model ?? '',
-                  onChange: (event) => setTranslateModel((current) => ({
-                    provider: current?.provider ?? translateRoute,
-                    model: event.target.value,
-                  })),
-                }, (modelChoices.length === 0
-                  ? [{ model: translateOptions?.model?.model ?? '', name: translateOptions?.model?.model ?? '—' }]
-                  : modelChoices
-                ).map((entry) => h('option', { key: entry.model, value: entry.model }, entry.name ?? entry.model))))),
-              translateError === '' ? null : h('p', { className: 'er-fine er-fine-err' }, `${t('trans.failed')}: ${translateError.slice(0, 120)}`)))),
-      ] : null
-
-      const addDialog = addOpen ? [
-        h('div', { key: 'veil', className: 'er-veil', onMouseDown: () => setAddOpen(false) }),
-        h('div', {
-          key: 'dialog',
-          className: 'er-dialog',
-          role: 'dialog', 'aria-modal': 'true', 'aria-label': t('add.title'),
-        },
-          h('div', { className: 'er-dialog-head' },
-            h('h2', { className: 'er-dialog-title' }, editingSource === '' ? t('add.title') : t('add.editTitle')),
-            h('button', {
-              type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
-              onClick: () => setAddOpen(false),
-            }, glyph(ICON.close, 15))),
-          h('div', { className: 'er-dialog-body' },
-            editingSource !== '' ? null : h('div', { className: 'er-seg', role: 'radiogroup', 'aria-label': t('add.title') },
-              h('button', {
-                type: 'button', role: 'radio', 'aria-checked': addKind === 'api' ? 'true' : 'false',
-                className: 'er-seg-btn', onClick: () => setAddKind('api'),
-              }, t('add.kind.api')),
-              h('button', {
-                type: 'button', role: 'radio', 'aria-checked': addKind === 'local' ? 'true' : 'false',
-                className: 'er-seg-btn', onClick: () => setAddKind('local'),
-              }, t('add.kind.local'))),
-            addKind === 'api'
-              ? h('div', null,
-                field(t('add.id'), h('input', {
-                  className: 'er-input', value: draftId, spellCheck: false, disabled: editingSource !== '',
-                  placeholder: 'my-tts',
-                  onChange: (event) => setDraftId(event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '')),
-                })),
-                h('p', { className: 'er-fine er-fine-dim' }, t('add.id.hint')),
-                field(t('add.name'), h('input', {
-                  className: 'er-input', value: draftName, spellCheck: false,
-                  placeholder: t('source.custom'),
-                  onChange: (event) => setDraftName(event.target.value),
-                })),
-                field(t('add.protocol'), h('select', {
-                  className: 'er-select', value: draftProtocol,
-                  onChange: (event) => {
-                    setDraftProtocol(event.target.value)
-                    setApiModels([])
-                    setProbe({ state: 'idle', message: '' })
-                  },
-                }, [
-                  ['auto', t('add.protocol.auto')],
-                  ['openai', t('add.protocol.openai')],
-                  ['dashscope', t('add.protocol.dashscope')],
-                  ['azure', t('add.protocol.azure')],
-                ]
-                  .map(([value, label]) => h('option', { key: value, value }, label)))),
-                field(t('custom.baseUrl'), h('input', {
-                  className: 'er-input', value: draftBaseUrl, spellCheck: false,
-                  placeholder: draftProtocol === 'azure'
-                    ? 'https://<region>.tts.speech.microsoft.com/cognitiveservices/v1'
-                    : draftProtocol === 'dashscope'
-                      ? 'https://dashscope.aliyuncs.com'
-                      : 'https://api.example.com/v1',
-                  onChange: (event) => { setDraftBaseUrl(event.target.value); setProbe({ state: 'idle', message: '' }) },
-                })),
-                field(t('add.key'), h('input', {
-                  className: 'er-input', type: 'password', value: draftKey, spellCheck: false,
-                  placeholder: editingSource === '' ? t('add.key.placeholder') : t('custom.keyKeep'),
-                  onChange: (event) => { setDraftKey(event.target.value); setProbe({ state: 'idle', message: '' }) },
-                })),
-                // Connectivity needs the endpoint and the key together, so the test
-                // rides the hint's line, right-aligned and small.
-                h('div', { className: 'er-keyline' },
-                  h('span', { className: 'er-fine er-fine-dim' }, t('add.key.hint')),
-                  h('button', {
-                    type: 'button', className: 'er-bundled-act',
-                    disabled: validating || draftBaseUrl.trim() === '',
-                    onClick: () => { void testEndpoint() },
-                  }, validating ? t('add.testing') : t('add.test'))),
-                probe.state === 'ok' ? h('p', { className: 'er-fine er-probe-ok', role: 'status' }, probe.message) : null,
-                probe.state === 'bad' ? h('p', { className: 'er-fine er-fine-err', role: 'status' }, probe.message) : null,
-                field(t('custom.model'), h('div', { className: 'er-dir' },
-                  apiModels.length === 0
-                    ? h('input', {
-                      className: 'er-input', value: draftModel, spellCheck: false,
-                      placeholder: t('add.modelPlaceholder'),
-                      onChange: (event) => setDraftModel(event.target.value),
-                    })
-                    : h('select', {
-                      className: 'er-select', value: draftModel,
-                      onChange: (event) => setDraftModel(event.target.value),
-                    }, apiModels.map((entry) => h('option', { key: entry.id, value: entry.id }, entry.name))),
-                  h('button', {
-                    type: 'button', className: 'er-cta er-cta-quiet',
-                    disabled: fetchingModels || draftProtocol === 'azure',
-                    onClick: () => { void fetchModels() },
-                  }, fetchingModels ? t('add.fetching') : t('add.fetchModels')))))
-
-              : h('div', null,
-                field(t('add.name'), h('input', {
-                  className: 'er-input', value: draftName, spellCheck: false,
-                  placeholder: t('source.local.short'),
-                  onChange: (event) => setDraftName(event.target.value),
-                })),
-                field(t('add.dir'), h('div', { className: 'er-dir' },
-                  h('input', {
-                    className: 'er-input', value: draftPath, spellCheck: false,
-                    placeholder: t('add.dir.placeholder'),
-                    onChange: (event) => setDraftPath(event.target.value),
-                  }),
-                  h('button', {
-                    type: 'button', className: 'er-cta er-cta-quiet',
-                    onClick: () => { void pickModelDir() },
-                  }, t('add.pick')))),
-                h('p', { className: 'er-fine' }, t('add.dir.hint')),
-                // The bundled model is the fallback, so it sits under the folder
-                // field: one compact line with a state dot and its action.
-                h('div', { className: 'er-bundled' },
-                  h('span', {
-                    className: `er-dot ${modelReady ? 'er-dot-ok' : modelBusy ? 'er-dot-busy' : 'er-dot-bad'}`,
-                    'aria-hidden': true,
-                  }),
-                  h('span', { className: 'er-bundled-title' }, t('add.bundled.title')),
-                  h('span', { className: 'er-bundled-meta' }, modelReady
-                    ? t('add.bundled.downloaded')
-                    : modelBusy
-                      ? fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) })
-                      : megabytes(model?.approximateBytes ?? model?.totalBytes)),
-                  h('span', { className: 'er-grow' }),
-                  modelReady
-                    ? h('span', { className: 'er-bundled-done' }, t('add.bundled.added'))
-                    : modelBusy || awaitBundled
-                      ? h('span', { className: 'er-bundled-done' }, `${Math.round((model?.progress ?? 0) * 100)}%`)
-                      : h('button', {
-                        type: 'button', className: 'er-bundled-act',
-                        onClick: () => { setAwaitBundled(true); installModel() },
-                      }, t('add.bundled.download'))))),
-          addError === '' ? null : h('p', { className: 'er-dialog-error', role: 'alert' }, addError),
-          h('div', { className: 'er-dialog-foot' },
-            h('button', {
-              type: 'button', className: 'er-cta er-cta-quiet',
-              onClick: () => setAddOpen(false),
-            }, t('cancel')),
-            h('button', {
-              type: 'button', className: 'er-cta er-cta-strong',
-              // Nothing to attach means nothing to add: the bundled model is
-              // downloaded from its own row, not from an empty folder.
-              disabled: validating
-                || (addKind === 'api'
-                  ? draftBaseUrl.trim() === '' || draftId.trim() === ''
-                  : draftPath.trim() === ''),
-              onClick: () => { void addSource() },
-            }, validating ? t('add.validating') : (editingSource === '' ? t('add.add') : t('add.save'))))),
-      ] : null
-
-      /** One floating card serves the right-click lookup and the pinned dialog. */
-      const cardHeight = Math.max(180, Math.min(panelHeight - 24, 420))
-      const wordCard = card === null ? null : h('div', {
-        className: `er-wordcard${card.pinned ? ' er-wordcard-pin' : ''}`,
-        style: card.pinned
-          ? { right: '12px', top: '12px', maxHeight: `${cardHeight}px` }
-          : {
-            left: `${Math.max(8, Math.min(card.x, Math.max(8, panelWidth - 272)))}px`,
-            top: `${Math.max(8, Math.min(card.y, Math.max(8, panelHeight - cardHeight - 8)))}px`,
-            maxHeight: `${cardHeight}px`,
-          },
-        role: 'dialog', 'aria-label': t('dict.title'),
-        onMouseDown: (event) => event.stopPropagation(),
-        onContextMenu: (event) => event.preventDefault(),
-      },
-        h('div', { className: 'er-wordcard-head' },
-          card.pinned
-            ? h('input', {
-              className: 'er-input', value: query, autoFocus: true, spellCheck: false,
-              placeholder: t('dict.placeholder'), 'aria-label': t('dict.title'),
-              onChange: (event) => setQuery(event.target.value),
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') { event.preventDefault(); void lookUp(query) }
-                if (event.key === 'Escape') { event.preventDefault(); setCard(null) }
-              },
-            })
-            : h('span', { className: 'er-wordcard-word' }, cardEntry?.word ?? card.word),
-          h('button', {
-            type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
-            onClick: () => setCard(null),
-          }, glyph(ICON.close, 14))),
-        cardState === 'loading'
-          ? h('p', { className: 'er-wordcard-note' }, t('dict.loading'))
-          : cardState === 'failed'
-            ? h('p', { className: 'er-wordcard-note er-fine-err' }, cardError)
-            : cardState === 'missing'
-              ? h('p', { className: 'er-wordcard-note' }, t('dict.missing'))
-              : cardEntry === null
-                ? h('p', { className: 'er-wordcard-note' }, t('dict.placeholder'))
-                : h('div', { className: 'er-wordcard-body' },
-                  cardEntry.phonetic === '' ? null : h('div', { className: 'er-wordcard-ph' }, cardEntry.phonetic),
-                  (cardEntry.senses ?? []).map((sense, at) => h('div', { key: at, className: 'er-sense' },
-                    h('div', { className: 'er-sense-line' },
-                      sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
-                      h('span', null, sense.def)),
-                    sense.example === ''
-                      ? null
-                      : h('div', { className: 'er-sense-eg' },
-                        h('span', null, sense.example),
-                        h('button', {
-                          type: 'button',
-                          className: `er-say${sayingKey === `c:${at}` ? ' er-say-on' : ''}`,
-                          title: t('words.sayExample'), 'aria-label': t('words.sayExample'),
-                          onClick: () => { void speak(sense.example, `c:${at}`) },
-                        }, glyph(ICON.speaker, 12))))),
-                  Array.isArray(cardEntry.translation) && cardEntry.translation.length > 0
-                    ? h('div', { className: 'er-wordcard-tr' }, cardEntry.translation.map((sense, at) => h('div', {
-                      key: at, className: 'er-wordcard-trline',
-                    },
-                      sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
-                      h('span', null, sense.def))))
-                    : null,
-                  h('div', { className: 'er-wordcard-foot' },
-                    cardState === 'ready' ? h('button', {
-                      type: 'button', className: 'er-add er-add-plain',
-                      onClick: () => saveWord({ ...cardEntry, word: cardEntry.word }),
-                    }, words.some((item) => item.id === String(cardEntry.word).toLowerCase()) ? t('dict.saved') : t('dict.save')) : null)))
-
-      // ------------------------------------------------------------------ body
-      const errorBar = errorKind === ''
-        ? null
-        : h('div', { className: 'er-notice er-notice-err', role: 'alert' },
-          h('span', null, t(`error.${errorKind}`)),
-          errorKind === 'notInstalled'
-            ? h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: installModel }, t('local.download'))
-            : errorKind === 'preparing'
-              ? null
-              : h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: () => { void playAt(index) } }, t('retry')))
-
-      /** Commit whatever the custom field holds, ignoring nonsense. */
-      const commitWidth = () => {
-        const value = Math.round(Number(widthDraft))
-        setEditingWidth(false)
-        if (!Number.isFinite(value)) return
-        setCustomPct(Math.min(100, Math.max(20, value)))
-      }
-      const commitFont = () => {
-        const value = Math.round(Number(fontDraft))
-        setEditingFont(false)
-        if (!Number.isFinite(value)) return
-        setCustomPx(Math.min(40, Math.max(11, value)))
-      }
-
-      /** Two segmented controls, in the same shape as the rest of the panel. */
-      const displayBar = view === 'editor' ? null : h('div', { className: 'er-display' },
-        editingWidth
-          ? h('div', { className: 'er-custom' },
-            h('input', {
-              className: 'er-input er-custom-input', type: 'number', min: '20', max: '100',
-              value: widthDraft, autoFocus: true, 'aria-label': t('display.widthCustom'),
-              placeholder: String(Math.round(customPct > 0 ? customPct : 100)),
-              onChange: (event) => setWidthDraft(event.target.value),
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') { event.preventDefault(); commitWidth() }
-                if (event.key === 'Escape') { event.preventDefault(); setEditingWidth(false) }
-              },
-              onBlur: commitWidth,
-            }),
-            h('span', { className: 'er-custom-unit' }, t('display.percent')))
-          : h('div', { className: 'er-seg er-seg-sm', role: 'radiogroup', 'aria-label': t('display.width') },
-            WIDTH_STEPS.map((step) => h('button', {
-              key: step.id, type: 'button', role: 'radio',
-              'aria-checked': customPct === 0
-                && (columnWidth === step.px || (columnWidth === 0 && step.px === DEFAULT_WIDTH)) ? 'true' : 'false',
-              className: 'er-seg-btn',
-              onClick: () => { setCustomPct(0); setColumnWidth(step.px) },
-            }, t(`display.width.${step.id}`))),
-            h('button', {
-              type: 'button', role: 'radio',
-              'aria-checked': customPct > 0 ? 'true' : 'false',
-              className: 'er-seg-btn',
-              onClick: () => { setWidthDraft(String(customPct > 0 ? customPct : 100)); setEditingWidth(true) },
-            }, t('display.custom'))),
-        editingFont
-          ? h('div', { className: 'er-custom' },
-            h('input', {
-              className: 'er-input er-custom-input', type: 'number', min: '11', max: '40',
-              value: fontDraft, autoFocus: true, 'aria-label': t('display.fontCustom'),
-              placeholder: String(Math.round(customPx > 0 ? customPx : 14)),
-              onChange: (event) => setFontDraft(event.target.value),
-              onKeyDown: (event) => {
-                if (event.key === 'Enter') { event.preventDefault(); commitFont() }
-                if (event.key === 'Escape') { event.preventDefault(); setEditingFont(false) }
-              },
-              onBlur: commitFont,
-            }),
-            h('span', { className: 'er-custom-unit' }, t('display.px')))
-          : h('div', { className: 'er-seg er-seg-sm', role: 'radiogroup', 'aria-label': t('display.font') },
-            FONT_STEPS.map((step) => h('button', {
-              key: step.id, type: 'button', role: 'radio',
-              'aria-checked': customPx === 0 && Math.abs(fontScale - step.scale) < 0.01 ? 'true' : 'false',
-              className: 'er-seg-btn',
-              onClick: () => { setCustomPx(0); setFontScale(step.scale) },
-            }, t(`display.font.${step.id}`))),
-            h('button', {
-              type: 'button', role: 'radio',
-              'aria-checked': customPx > 0 ? 'true' : 'false',
-              className: 'er-seg-btn',
-              onClick: () => { setFontDraft(String(customPx > 0 ? customPx : 14)); setEditingFont(true) },
-            }, t('display.custom'))),
-        h('button', {
-          type: 'button', className: 'er-glyph er-display-dict',
-          title: t('dict.title'), 'aria-label': t('dict.title'),
-          onClick: () => {
-            setQuery('')
-            setCardEntry(null)
-            setCardState('idle')
-            setCard({ word: '', x: 0, y: 0, pinned: true })
-          },
-        }, glyphLine(ICON.book, 16)))
-
-      // Everything the three page views read from the panel's state.
       const visibleWords = words.filter((item) => {
         const needle = wordFilter.trim().toLowerCase()
         if (needle === '') return true
@@ -3664,15 +3706,14 @@ function mergeStates(local, remote) {
         void loadWordEntry(item.word)
       }
 
-
-      const ui = { pageBox, wordFilter, setWordFilter, t, words, visibleWords, openWordId, openEntry, dictShow, aiEntries, entryKey, dictCn, dictEn, dictModelCn, dictModelEn, toggleWord, sayingKey, speak, closeWord, openPinnedWord, dropWord, openLoading, items, activeId, renamingItem, nameDraft, setNameDraft, setRenamingItem, openItem, togglePin, editItem, renameItem, confirmDelete, setConfirmDelete, removeItem, newDialogue, draft, setDraft, draftMode, setDraftMode, draftDoc, editingId, startReading, cancelEditor }
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)
         : view === 'editor' ? renderEditor(ui)
           // A fragment, not an array: an array of elements needs keys, and these
           // three are never reordered.
-          : h(React.Fragment, null, list, errorBar, transport)
+          : h(React.Fragment, null, renderList(ui), renderErrorBar(ui), renderTransport(ui))
 
       return h('div', {
         className: 'er-root', onKeyDown, tabIndex: 0, ref: rootRef,
@@ -3680,12 +3721,12 @@ function mergeStates(local, remote) {
         style: { '--er-scale': String(effectiveScale) },
       },
         Styles(),
-        header,
-        displayBar,
+        renderHeader(ui),
+        renderDisplayBar(ui),
         body,
-        settingsCard,
-        addDialog,
-        wordCard,
+        renderSettingsCard(ui),
+        renderAddDialog(ui),
+        renderWordCard(ui),
         h('audio', { ref: audioRef }))
     }
 
