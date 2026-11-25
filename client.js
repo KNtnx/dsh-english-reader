@@ -1409,10 +1409,21 @@ function mergeStates(local, remote) {
       // A translation belongs to one exact text; editing the dialogue retires it.
       // A translation belongs to one exact text AND one exact split: changing the
       // reading mode re-splits the sentences, so the old lines no longer line up.
+      // It also belongs to the source that produced it: switching the translation
+      // source must replace the lines, not keep showing the old source's answer.
+      // Only the source and its model are compared: the host may normalize the
+      // target language, and a mismatch there would refetch forever.
+      const translationSourceOf = (record) => (record === null || record === undefined ? '' : [
+        record.source ?? '',
+        record.model?.provider ?? '',
+        record.model?.model ?? '',
+      ].join('\u0000'))
+      const wantedSource = [translateSource, translateModel?.provider ?? '', translateModel?.model ?? ''].join('\u0000')
       const translation = storedTranslation !== undefined && storedTranslation !== null
         && storedTranslation.hash === textHash
         && Array.isArray(storedTranslation.lines)
         && storedTranslation.lines.length === total
+        && translationSourceOf(storedTranslation) === wantedSource
         ? storedTranslation : null
       const modelBusy = model !== null && (model.phase === 'downloading' || model.phase === 'loading')
 
@@ -2006,6 +2017,10 @@ function mergeStates(local, remote) {
         setShowTranslation(true)
         if (translation === null) void translateActive()
       }, [showTranslation, translation, translateActive])
+
+      // A failed attempt belongs to the source that failed: switching it clears
+      // the error so the next attempt actually runs.
+      useEffect(() => { setTranslateError('') }, [translateSource, translateModel])
 
       // Translation was switched on, this dialogue has none yet, and the previous
       // attempt did not fail: fetch it once for the dialogue that is open.

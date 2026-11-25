@@ -131,6 +131,8 @@ Lookups are limited to the sentence being read, so a long article never pays for
 | Google | nothing | Keyless `translate.googleapis.com` |
 | Volcengine | nothing | Keyless web endpoint; reads more naturally in Chinese |
 
+A translation is tagged with the source and model that produced it, so switching source (or model) re-translates and replaces the lines on screen instead of leaving the previous source's version in place.
+
 ## Privacy
 
 - Text is synthesized only by the engine you pick: the local model stays offline, Edge and custom APIs send the sentence to that vendor.

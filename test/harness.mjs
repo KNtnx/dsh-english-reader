@@ -92,7 +92,7 @@ export function createHost(options = {}) {
     if (path === '/api-dsh-english-reader/translate') {
       const body = JSON.parse(String(init.body ?? '{}'))
       const texts = Array.isArray(body.texts) ? body.texts : []
-      return json({ translations: texts.map((text) => `译:${text}`) })
+      return json({ translations: texts.map((text) => `译[${body.source}]:${text}`) })
     }
     if (path === '/api-dsh-english-reader/tts') {
       return new Response(new Uint8Array([0]), { status: 200, headers: { 'content-type': 'audio/mpeg' } })
