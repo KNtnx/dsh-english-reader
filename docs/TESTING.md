@@ -109,12 +109,13 @@ structure. Open the panel from the sidebar (对话朗读) and walk the list:
 6. **Dictionary** — right-click a word: the card matches the click; switch the
    display mode: a Chinese-only card shows no English definition.
 7. **Save a word** — it appears in 我的单词 at once, with a Chinese gloss.
-8. **Expand it** — its own entry shows, and a later right-click does not overwrite
+8. **Drag it** — the card follows the pointer when dragged by its head or grip, and stays put on release (the pinned 查单词 dialog drags by its grip, and its field still takes typing).
+9. **Expand it** — its own entry shows, and a later right-click does not overwrite
    it (and vice versa).
-9. **Switch the translation source** — the lines are replaced, not kept.
-10. **Reload the page** — the reading position, words and dialogues are all still
+10. **Switch the translation source** — the lines are replaced, not kept.
+11. **Reload the page** — the reading position, words and dialogues are all still
     there.
-11. **Play again** — audio still works after the reload (this is the one the
+12. **Play again** — audio still works after the reload (this is the one the
     worker-path bug broke).
 
 ## Rules when adding or changing a test

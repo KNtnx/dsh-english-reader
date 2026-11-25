@@ -292,3 +292,59 @@ test('the card opens at the word that was clicked', async () => {
     await api.unmount()
   }
 })
+
+test('a right-click card can be dragged by its head', async () => {
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    const word = api.qa('.er-w').find((node) => node.textContent.replace(/[^a-z]/gi, '') === 'revive')
+    word.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }))
+    await api.waitFor(() => api.q('.er-wordcard') !== null, { label: 'the card' })
+    const card = api.q('.er-wordcard')
+    assert.equal(card.style.left, '300px')
+
+    const head = card.querySelector('.er-wordcard-head')
+    head.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 320, clientY: 210 }))
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 420, clientY: 300 }))
+    await api.settle()
+    assert.equal(api.q('.er-wordcard').style.left, '400px', 'it follows the pointer horizontally')
+    assert.equal(api.q('.er-wordcard').style.top, '290px', 'and vertically')
+
+    window.dispatchEvent(new MouseEvent('mouseup', {}))
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 900, clientY: 900 }))
+    await api.settle()
+    assert.equal(api.q('.er-wordcard').style.left, '400px', 'and stops when the button is released')
+  } finally {
+    await api.unmount()
+  }
+})
+
+test('dragging the pinned dialog does not close it or eat the input', async () => {
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    await api.click(api.q(".er-display-dict"))
+    await api.waitFor(() => api.q('.er-wordcard-pin') !== null, { label: 'the pinned card' })
+    const before = api.q('.er-wordcard-pin')
+    const startLeft = before.style.left
+    const input = before.querySelector('input')
+    assert.ok(input !== null, 'the pinned card has a query field')
+
+    // Pressing inside the field must not start a drag.
+    input.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 500, clientY: 100 }))
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 600, clientY: 200 }))
+    await api.settle()
+    assert.equal(api.q('.er-wordcard-pin').style.left, startLeft, 'a click in the field does not move the card')
+    window.dispatchEvent(new MouseEvent('mouseup', {}))
+
+    // The grip drags it (the head is mostly the query field on a pinned card).
+    const head = api.q('.er-wordcard-pin .er-grip')
+    head.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 520, clientY: 120 }))
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 400, clientY: 340 }))
+    await api.settle()
+    const moved = api.q('.er-wordcard-pin')
+    assert.notEqual(moved.style.left, startLeft, 'the head moves it')
+    assert.ok(moved !== null, 'and it stays open')
+    window.dispatchEvent(new MouseEvent('mouseup', {}))
+  } finally {
+    await api.unmount()
+  }
+})

@@ -99,6 +99,7 @@ window.__ModuleLoader__.load({
         'header.library': 'Library',
         'display.width': 'Width',
         'dict.title': 'Dictionary',
+        'dict.drag': 'Drag to move',
         'settings.dict': 'Dictionary',
         'dict.show': 'Show',
         'dict.kind.both': 'Both',
@@ -328,6 +329,7 @@ window.__ModuleLoader__.load({
         'header.library': '对话库',
         'display.width': '宽度',
         'dict.title': '字典',
+        'dict.drag': '按住可拖动',
         'settings.dict': '字典',
         'dict.show': '显示',
         'dict.kind.both': '中英',
@@ -1805,22 +1807,24 @@ function mergeStates(local, remote) {
 
   /** The wordCard block, split out so the panel body stays readable. */
   function renderWordCard(ui) {
-    const { card, cardEntry, cardError, cardHeight, cardState, windowHeight, windowWidth, dict, lookUp, onKeyDown, query, saveWord, sayingKey, setCard, setQuery, speak, t, words } = ui
+    const { card, cardEntry, cardError, cardHeight, cardState, windowHeight, windowWidth, startCardDrag, dict, lookUp, onKeyDown, query, saveWord, sayingKey, setCard, setQuery, speak, t, words } = ui
   return card === null ? null : h('div', {
         className: `er-wordcard${card.pinned ? ' er-wordcard-pin' : ''}`,
-        style: card.pinned
-          ? { position: 'fixed', right: '12px', top: '12px', maxHeight: `${cardHeight}px` }
-          : {
-            position: 'fixed',
-            left: `${Math.max(8, Math.min(card.x, Math.max(8, windowWidth - 272)))}px`,
-            top: `${Math.max(8, Math.min(card.y, Math.max(8, windowHeight - cardHeight - 8)))}px`,
-            maxHeight: `${cardHeight}px`,
-          },
+        style: {
+          position: 'fixed',
+          left: `${Math.max(8, Math.min(card.x, Math.max(8, windowWidth - 272)))}px`,
+          top: `${Math.max(8, Math.min(card.y, Math.max(8, windowHeight - 96)))}px`,
+          maxHeight: `${cardHeight}px`,
+        },
         role: 'dialog', 'aria-label': t('dict.title'),
         onMouseDown: (event) => event.stopPropagation(),
         onContextMenu: (event) => event.preventDefault(),
       },
-        h('div', { className: 'er-wordcard-head' },
+        h('div', { className: 'er-wordcard-head', onMouseDown: startCardDrag, title: t('dict.drag') },
+          h('span', {
+            className: 'er-grip', 'aria-hidden': true, title: t('dict.drag'),
+            onMouseDown: startCardDrag,
+          }, '\u28ff'),
           card.pinned
             ? h('input', {
               className: 'er-input', value: query, autoFocus: true, spellCheck: false,
@@ -1908,7 +1912,7 @@ function mergeStates(local, remote) {
 
   /** The displayBar block, split out so the panel body stays readable. */
   function renderDisplayBar(ui) {
-    const { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, columnWidth, customPct, customPx, dict, editingFont, editingWidth, fontDraft, fontScale, onKeyDown, setCard, setCardEntry, setCardState, setColumnWidth, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setQuery, setWidthDraft, t, view, widthDraft } = ui
+    const { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, columnWidth, customPct, customPx, dict, editingFont, editingWidth, fontDraft, fontScale, onKeyDown, setCard, setCardEntry, setCardState, setColumnWidth, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setQuery, setWidthDraft, t, view, widthDraft, windowWidth } = ui
   return view === 'editor' ? null : h('div', { className: 'er-display' },
         editingWidth
           ? h('div', { className: 'er-custom' },
@@ -1972,7 +1976,7 @@ function mergeStates(local, remote) {
             setQuery('')
             setCardEntry(null)
             setCardState('idle')
-            setCard({ word: '', x: 0, y: 0, pinned: true })
+            setCard({ word: '', x: Math.max(8, windowWidth - 280 - 12), y: 12, pinned: true })
           },
         }, glyphLine(ICON.book, 16)))
 
@@ -3450,7 +3454,7 @@ function mergeStates(local, remote) {
         const word = String(raw).trim();
         if (word === '') return;
         setQuery(word);
-        setCard({ word, x: 0, y: 0, pinned: true });
+        setCard({ word, x: Math.max(8, windowWidth - 272 - 12), y: 12, pinned: true });
         void lookUp(word);
       }, [lookUp])
 
@@ -3714,7 +3718,33 @@ function mergeStates(local, remote) {
       const windowHeight = typeof window === 'undefined' ? panelHeight : window.innerHeight
       const cardHeight = Math.max(180, Math.min(windowHeight - 24, 420))
 
-      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth }
+      /** Drag a card by its head: the pointer moves it, not the text behind it. */
+      const startCardDrag = (event) => {
+        if (event.button !== 0) return
+        if (event.target.closest?.('button, input, textarea, select, a') !== null) return
+        if (card === null) return
+        event.preventDefault()
+        const startX = event.clientX
+        const startY = event.clientY
+        const originX = card.x
+        const originY = card.y
+        const clamp = (value, low, high) => Math.max(low, Math.min(value, high))
+        const move = (moveEvent) => {
+          const x = clamp(originX + moveEvent.clientX - startX, 8, Math.max(8, windowWidth - 272))
+          const y = clamp(originY + moveEvent.clientY - startY, 8, Math.max(8, windowHeight - 80))
+          setCard((current) => (current === null ? current : { ...current, x, y }))
+        }
+        const end = () => {
+          window.removeEventListener('mousemove', move)
+          window.removeEventListener('mouseup', end)
+          document.body.style.userSelect = ''
+        }
+        document.body.style.userSelect = 'none'
+        window.addEventListener('mousemove', move)
+        window.addEventListener('mouseup', end)
+      }
+
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)
@@ -3809,7 +3839,10 @@ function mergeStates(local, remote) {
 .er-passage-on .er-w:hover{background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 7%,transparent);box-shadow:0 0 0 1px color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 26%,transparent)}
 .er-wordcard{position:absolute;z-index:45;width:260px;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:8px;padding:10px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-md,10px);background:var(--dsw-alias-bg-base,#fff);box-shadow:var(--dsw-elevation-panel,0 10px 30px rgba(0,0,0,.18));animation:er-pop .12s ease-out}
 .er-wordcard-pin{width:280px}
-.er-wordcard-head{display:flex;align-items:center;gap:6px}
+.er-wordcard-head{display:flex;align-items:center;gap:6px;cursor:grab;touch-action:none}
+.er-grip{flex:0 0 auto;color:var(--dsw-alias-label-tertiary,#9a9a9a);font-size:12px;line-height:1;cursor:grab;user-select:none;letter-spacing:-2px}
+.er-grip:active{cursor:grabbing}
+.er-wordcard-head:active{cursor:grabbing}
 .er-wordcard-head .er-input{flex:1;min-width:0;height:26px}
 .er-wordcard-word{flex:1;min-width:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) + 2px);font-weight:600;color:var(--dsw-alias-label-primary,#111);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .er-wordcard-note{margin:2px 0 6px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#888)}
