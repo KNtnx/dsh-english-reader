@@ -28,6 +28,7 @@ window.__ModuleLoader__.load({
     const DICT_KEY = '/api-dsh-english-reader/dict/key'
     /** The library and the saved words, kept by the host so every session shares them. */
     const STORE_PATH = '/api-dsh-english-reader/store'
+    const BOOT_TIMEOUT_MS = 2500
     const SPEECH_SOURCE_PATH = '/api-dsh-english-reader/tts/sources'
     /** A home-directory path reads better (and wraps less) as `~/…`. */
     function shortPath(value) {
@@ -997,7 +998,12 @@ function mergeStates(local, remote) {
       useEffect(() => {
         let cancelled = false
         const local = loadState()
-        void fetch(STORE_PATH, { cache: 'no-store' })
+        // A host that never answers must not leave the panel blank for ever: the
+        // browser's own copy is enough to start, and the next save reconciles.
+        const signal = typeof AbortSignal === 'object' && typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.timeout(BOOT_TIMEOUT_MS)
+          : undefined
+        void fetch(STORE_PATH, { cache: 'no-store', signal })
           .then((response) => (response.ok ? response.json() : null))
           .then((payload) => {
             if (!cancelled) setBoot(mergeStates(local, payload?.state ?? null))
@@ -2075,6 +2081,466 @@ function mergeStates(local, remote) {
     }
   }
 
+  /**
+   * The library, the saved words, and the position in the open dialogue: the
+   * state that belongs to the user instead of to a view.
+   *
+   * It is written to `localStorage`, and the half the host can share is posted
+   * there too, so the next session — and the next browser — starts with it.
+   *
+   * The position lives here rather than with the player because saving the
+   * library saves it too; `usePlayback` only moves it.
+   */
+  function useSharedStore({
+    initial, initialItems, initialActive,
+    extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext,
+    showTranslation, translateSource, translateModel, columnWidth, fontScale,
+    customPct, customPx, dictShow, dictCn, dictEn, dictModelCn, dictModelEn,
+    sections, bundledA, bundledB,
+  }) {
+    const [items, setItems] = useState(initialItems)
+    const [activeId, setActiveId] = useState(initialActive)
+    const [index, setIndex] = useState(() => {
+      const item = initialItems.find((candidate) => candidate.id === initialActive)
+      if (!Number.isInteger(item?.index)) return 0
+      // The stored text may have been edited shorter since the position was
+      // written, so clamp against what it parses to now.
+      const count = parseDialogue(item.text, item.mode).sentences.length
+      return Math.max(0, Math.min(item.index, Math.max(0, count - 1)))
+    })
+
+    /** The word card: where it is anchored, and what it shows. */
+    const [words, setWords] = useState(() => (Array.isArray(initial.words) ? initial.words : [])
+      .filter((item) => item !== null && typeof item === 'object' && typeof item.word === 'string')
+      .map((item) => ({
+        ...item,
+        id: String(item.id ?? item.word).toLowerCase(),
+        senses: sensesOf(item.senses),
+        translation: sensesOf(item.translation),
+        // A context that does not contain the word came from a search, not
+        // from a sentence; earlier releases stored the reading position.
+        context: typeof item.context === 'string'
+          && item.context.toLowerCase().includes(String(item.word).toLowerCase())
+          ? item.context
+          : '',
+      })))
+    /**
+     * Ids this browser deleted. A shared library cannot express a deletion by
+     * leaving an entry out — a stale copy elsewhere would put it straight back
+     * — so deletions travel as tombstones and win over any older copy.
+     */
+    const [removed, setRemoved] = useState(() => (Array.isArray(initial.removed) ? initial.removed : []))
+
+    /** Model-written entries, keyed by word, so a kind switch never pays twice. */
+    const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
+
+    /**
+     * Send the shared half of the panel state to the host, shortly after it
+     * changes. Debounced because a reading position changes on every sentence;
+     * the host merges by id, so two open panels cannot erase each other.
+     */
+    const storeTimerRef = useRef(0)
+    const storePendingRef = useRef(null)
+    const saveRef = useRef(null)
+    const sendStore = useCallback((payload) => {
+      storePendingRef.current = payload
+      if (storeTimerRef.current !== 0) return
+      storeTimerRef.current = setTimeout(() => {
+        storeTimerRef.current = 0
+        const body = JSON.stringify({ state: storePendingRef.current })
+        void fetch(STORE_PATH, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body,
+        }).catch(() => { /* the next change sends the whole state again */ })
+      }, 600)
+    }, [])
+
+    /** Write the library out; overrides let a handler persist a state React has not rendered yet. */
+    const persist = useCallback((override) => {
+      const list = override?.items ?? items
+      const gone = override?.removed ?? removed
+      const id = override?.activeId === undefined ? activeId : override.activeId
+      const at = override?.index === undefined ? index : override.index
+      try {
+        window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
+          version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
+          showTranslation, translateSource, translateModel, autoNext, words, removed: gone, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
+          items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
+        }))
+      } catch { /* storage full or blocked: the panel still works */ }
+      // The library and the word list are user data, not view state: the host
+      // keeps them so the next session, and the next browser, starts with them.
+      sendStore({
+        savedAt: Date.now(),
+        items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
+        words,
+        removed: gone,
+      })
+    }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, removed, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
+
+    // Remember the library, the position, and the settings.
+    useEffect(() => {
+      const write = () => persist()
+      saveRef.current = write
+      const timer = setTimeout(write, 350)
+      return () => { clearTimeout(timer) }
+    }, [persist])
+
+    // The last write: a closed panel has nobody left to send the state for it.
+    useEffect(() => () => {
+      saveRef.current?.()
+      if (storeTimerRef.current !== 0) {
+        clearTimeout(storeTimerRef.current)
+        storeTimerRef.current = 0
+        const pending = storePendingRef.current
+        if (pending !== null) {
+          void fetch(STORE_PATH, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ state: pending }),
+          }).catch(() => { /* nothing left to retry with */ })
+        }
+      }
+    }, [])
+
+    return {
+      items, setItems, activeId, setActiveId, index, setIndex,
+      words, setWords, removed, setRemoved, aiEntries, setAiEntries,
+      sendStore, persist, saveRef,
+    }
+  }
+
+  /**
+   * Playback: the audio element, the clip cache, and the one sentence being
+   * read. Every handler here works from `stateRef`, so one snapshot of the
+   * reader serves them all instead of a closure over each render.
+   *
+   * The position in the dialogue belongs to `useSharedStore` — it is written
+   * with the library — and arrives here as a value and its setter.
+   */
+  function usePlayback({
+    stateRef, voiceFor, sentences, wordRefs,
+    index, setIndex, rate, loop, autoNext, voiceA, voiceB,
+    activeSource, provider, setNoticeKey, setErrorKind, refreshModel,
+  }) {
+    const audioRef = useRef(null)
+    const cacheRef = useRef(new Map())
+    const inflightRef = useRef(new Map())
+    const tokenRef = useRef(0)
+    const disposedRef = useRef(false)
+    const sayRef = useRef(null)
+    const [sayingKey, setSayingKey] = useState('')
+    const activeWordRef = useRef(-1)
+    /** Marks and resolved start times for the clip currently loaded. */
+    const timingRef = useRef(null)
+    const [status, setStatus] = useState('idle')
+
+    // The snapshot the handlers below read: which voice, which engine, where.
+    // Assigned after every render, so a handler always sees the latest values.
+    useLayoutEffect(() => {
+      stateRef.current = {
+        index, sentences, voiceA, voiceB, provider, rate, loop, autoNext, status,
+        sourceId: activeSource.hostId ?? '',
+        baseUrl: activeSource.baseUrl ?? '',
+        model: activeSource.model ?? '',
+        modelPath: activeSource.modelPath ?? '',
+      }
+    })
+
+    /** Read any text out loud in the A voice, without touching the reader. */
+    const speak = useCallback(async (text, key) => {
+      const live = stateRef.current
+      const clean = String(text ?? '').trim()
+      if (clean === '' || typeof Audio !== 'function') return
+      try {
+        if (sayRef.current !== null) {
+          sayRef.current.pause()
+          sayRef.current = null
+        }
+        if (sayingKey === key) { setSayingKey(''); return }
+        const query = live.provider === 'custom'
+          ? `provider=custom&voice=${encodeURIComponent(live.voiceA)}`
+            + `&sourceId=${encodeURIComponent(live.sourceId)}&text=${encodeURIComponent(clean)}`
+          : live.provider === 'local'
+            ? `provider=local&voice=${encodeURIComponent(live.voiceA)}`
+              + `${live.modelPath === '' ? '' : `&modelPath=${encodeURIComponent(live.modelPath)}`}`
+              + `&text=${encodeURIComponent(clean)}`
+            : `provider=edge&voice=${encodeURIComponent(live.voiceA)}&text=${encodeURIComponent(clean)}`
+        setSayingKey(key)
+        const response = await fetch(`${TTS_PATH}?${query}`)
+        if (!response.ok) { setSayingKey(''); return }
+        const blob = await response.blob()
+        const url = URL.createObjectURL(blob)
+        const audio = new Audio(url)
+        audio.playbackRate = live.rate
+        audio.onended = () => { setSayingKey(''); URL.revokeObjectURL(url) }
+        audio.onerror = () => { setSayingKey(''); URL.revokeObjectURL(url) }
+        sayRef.current = audio
+        void audio.play()
+      } catch {
+        setSayingKey('')
+      }
+    }, [sayingKey])
+
+    /** Fetch (or reuse) the clip for one sentence. */
+    const clipFor = useCallback(async (sentence) => {
+      const live = stateRef.current
+      const voice = voiceFor(sentence)
+      const key = `${live.provider}|${voice}|${sentence.text}`
+      const cached = cacheRef.current.get(key)
+      if (cached !== undefined) return cached
+      const pending = inflightRef.current.get(key)
+      if (pending !== undefined) return pending
+      const query = live.provider === 'custom'
+        ? `provider=custom&voice=${encodeURIComponent(voice)}`
+          + `&sourceId=${encodeURIComponent(live.sourceId)}`
+          + `&text=${encodeURIComponent(sentence.text)}`
+        : live.provider === 'local'
+          ? `provider=local&voice=${encodeURIComponent(voice)}`
+            + `${live.modelPath === '' ? '' : `&modelPath=${encodeURIComponent(live.modelPath)}`}`
+            + `&text=${encodeURIComponent(sentence.text)}`
+          : `provider=edge&voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(sentence.text)}`
+      const request = fetch(`${TTS_PATH}?${query}`)
+        .then(async (response) => {
+          if (!response.ok) {
+            if (response.status === 503) {
+              const body = await response.json().catch(() => ({}))
+              const failure = new Error(body.code ?? 'not-installed')
+              failure.name = body.code === 'preparing' ? 'PreparingError' : 'NotInstalledError'
+              throw failure
+            }
+            const failure = new Error(`HTTP ${response.status}`)
+            failure.status = response.status
+            throw failure
+          }
+          const marks = decodeMarks(response.headers.get('x-er-marks'))
+          const blob = await response.blob()
+          const url = URL.createObjectURL(blob)
+          if (disposedRef.current) {
+            URL.revokeObjectURL(url)
+            throw new Error('panel closed')
+          }
+          const clip = { url, marks }
+          cacheRef.current.set(key, clip)
+          return clip
+        })
+        .catch((failure) => {
+          if (failure instanceof TypeError) {
+            const offline = new Error(failure.message)
+            offline.name = 'NetworkError'
+            throw offline
+          }
+          throw failure
+        })
+        .finally(() => { inflightRef.current.delete(key) })
+      inflightRef.current.set(key, request)
+      return request
+    }, [voiceFor])
+
+    /** Warm the clips just after the one playing. */
+    const prefetch = useCallback((from) => {
+      const list = stateRef.current.sentences
+      for (let offset = 1; offset <= PREFETCH; offset += 1) {
+        const sentence = list[from + offset]
+        if (sentence === undefined) return
+        void clipFor(sentence).catch(() => { /* retried on arrival */ })
+      }
+    }, [clipFor])
+
+    /** Light exactly one rendered word, touching the DOM directly so the list never re-renders. */
+    const applyWord = useCallback((position) => {
+      if (activeWordRef.current === position) return
+      const spans = wordRefs.current
+      const previous = spans[activeWordRef.current]
+      if (previous !== undefined && previous !== null) previous.classList.remove('er-w-on')
+      const next = spans[position]
+      if (next !== undefined && next !== null) next.classList.add('er-w-on')
+      activeWordRef.current = position
+    }, [])
+
+    /** Speak one sentence and keep the position in sync with it. */
+    const playAt = useCallback(async (target) => {
+      const list = stateRef.current.sentences
+      if (list.length === 0) return
+      const next = Math.max(0, Math.min(target, list.length - 1))
+      audioRef.current?.pause()
+      setIndex(next)
+      stateRef.current.index = next
+      setNoticeKey('')
+      const token = (tokenRef.current += 1)
+      setStatus('loading')
+      setErrorKind('')
+      if (stateRef.current.provider === 'local') void refreshModel()
+      try {
+        const clip = await clipFor(list[next])
+        if (token !== tokenRef.current) return
+        const audio = audioRef.current
+        if (audio === null) return
+        // Arm word tracking before playback so the first frame has a table.
+        timingRef.current = {
+          words: wordsOf(list[next].text),
+          marks: clip.marks ?? [],
+          times: null,
+        }
+        applyWord(-1)
+        audio.src = clip.url
+        audio.playbackRate = stateRef.current.rate
+        await audio.play()
+        if (token !== tokenRef.current) return
+        setStatus('playing')
+        prefetch(next)
+      } catch (failure) {
+        if (token !== tokenRef.current) return
+        if (failure instanceof Error && failure.name === 'NotAllowedError') {
+          setStatus('idle')
+          setNoticeKey('autoplay')
+          return
+        }
+        if (failure instanceof Error && failure.name === 'NotInstalledError') {
+          setStatus('idle')
+          setErrorKind('notInstalled')
+          void refreshModel()
+          return
+        }
+        if (failure instanceof Error && failure.name === 'PreparingError') {
+          setStatus('idle')
+          setErrorKind('preparing')
+          void refreshModel()
+          return
+        }
+        const name = failure instanceof Error ? failure.name : ''
+        const code = failure?.status
+        setErrorKind(name === 'NetworkError' ? 'network'
+          : code === 413 ? 'tooLong'
+            : code === 502 || code === 500 ? 'server'
+              : 'generic')
+        setStatus('error')
+      }
+    }, [clipFor, prefetch, refreshModel])
+
+    const toggle = useCallback(() => {
+      const audio = audioRef.current
+      if (audio === null) return
+      const live = stateRef.current
+      if (live.status === 'playing') {
+        audio.pause()
+        setStatus('paused')
+        return
+      }
+      if (live.status === 'paused' && audio.src !== '') {
+        audio.playbackRate = live.rate
+        void audio.play().then(() => setStatus('playing')).catch(() => { void playAt(live.index) })
+        return
+      }
+      void playAt(live.status === 'done' ? 0 : live.index)
+    }, [playAt])
+
+    const step = useCallback((delta) => { void playAt(stateRef.current.index + delta) }, [playAt])
+
+
+    // The audio element is mounted for the panel's whole life, so these
+    // listeners stay attached across view switches.
+    useEffect(() => {
+      const audio = audioRef.current
+      if (audio === null) return undefined
+      const onEnded = () => {
+        const live = stateRef.current
+        if (live.loop) { void playAt(live.index); return }
+        // Continuous playback is a choice: with it off a sentence ends and stops.
+        if (live.autoNext === false) { setStatus('done'); setNoticeKey('stopped'); return }
+        if (live.index + 1 < live.sentences.length) { void playAt(live.index + 1); return }
+        setStatus('done')
+      }
+      const onError = () => { setErrorKind('generic'); setStatus('error') }
+      audio.addEventListener('ended', onEnded)
+      audio.addEventListener('error', onError)
+      return () => {
+        audio.removeEventListener('ended', onEnded)
+        audio.removeEventListener('error', onError)
+      }
+    }, [playAt])
+
+    useEffect(() => {
+      if (audioRef.current !== null) audioRef.current.playbackRate = rate
+    }, [rate])
+
+    // Word highlight follows the media clock, so rate changes and seeks keep it true.
+    useEffect(() => {
+      if (status !== 'playing') return undefined
+      const audio = audioRef.current
+      if (audio === null) return undefined
+      let frame = 0
+      const tick = () => {
+        const timing = timingRef.current
+        if (timing !== null && timing.words.length > 0) {
+          if (timing.times === null) {
+            const known = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : 0
+            timing.times = buildTimings(timing.words, timing.marks, known)
+          }
+          const now = audio.currentTime * 1000
+          let active = -1
+          for (let position = 0; position < timing.times.length; position += 1) {
+            if (timing.times[position] <= now + 24) active = position
+            else break
+          }
+          applyWord(active)
+        }
+        frame = requestAnimationFrame(tick)
+      }
+      frame = requestAnimationFrame(tick)
+      return () => cancelAnimationFrame(frame)
+    }, [status, index, applyWord])
+
+    // A closed panel drops the clips it fetched; nothing can play them again.
+    useEffect(() => () => {
+      disposedRef.current = true
+      for (const clip of cacheRef.current.values()) URL.revokeObjectURL(clip.url)
+      cacheRef.current.clear()
+      inflightRef.current.clear()
+    }, [])
+
+    /**
+     * Abandon whatever the player is doing: invalidate the in-flight sentence,
+     * drop the loaded clip (it belongs to the engine and time it was fetched
+     * for), and return the transport to idle.
+     */
+    const cancelPlayback = useCallback(() => {
+      tokenRef.current += 1
+      const audio = audioRef.current
+      if (audio !== null) {
+        audio.pause()
+        audio.removeAttribute('src')
+        audio.load?.()
+      }
+      setStatus('idle')
+    }, [])
+
+    /** The voice and engine the loaded clip was made with. */
+    const spokenWith = useRef({ voiceA: '', voiceB: '', provider: '' })
+    const spokenReady = useRef(false)
+
+    // Changing who reads mid-sentence used to do nothing until the next
+    // sentence started, because the clip was already downloaded and playing.
+    useEffect(() => {
+      const previous = spokenWith.current
+      spokenWith.current = { voiceA, voiceB, provider: activeSource.id }
+      if (!spokenReady.current) { spokenReady.current = true; return }
+      if (previous.voiceA === voiceA && previous.voiceB === voiceB && previous.provider === activeSource.id) return
+      const live = stateRef.current
+      if (live.sentences.length === 0) return
+      if (live.status === 'playing') { void playAt(live.index); return }
+      // Nothing is speaking right now: drop the stale clip so the next play
+      // synthesizes with the new voice instead of replaying the old one.
+      if (live.status === 'paused') cancelPlayback()
+    }, [voiceA, voiceB, activeSource.id, playAt, cancelPlayback])
+
+    return {
+      audioRef, status, setStatus, sayingKey, setSayingKey,
+      playAt, step, toggle, speak, cancelPlayback,
+    }
+  }
+
     function ReaderBody(props) {
       const { pickDirectory } = props
       const localeId = useSnapshot(props.localeSource.subscribe, props.localeSource.getSnapshot)
@@ -2086,16 +2552,6 @@ function mergeStates(local, remote) {
         && typeof item === 'object' && typeof item.text === 'string') : []
       const initialActive = initialItems.some((item) => item.id === initial.activeId) ? initial.activeId : (initialItems[0]?.id ?? '')
 
-      const [items, setItems] = useState(initialItems)
-      const [activeId, setActiveId] = useState(initialActive)
-      const [index, setIndex] = useState(() => {
-        const item = initialItems.find((candidate) => candidate.id === initialActive)
-        if (!Number.isInteger(item?.index)) return 0
-        // The stored text may have been edited shorter since the position was
-        // written, so clamp against what it parses to now.
-        const count = parseDialogue(item.text, item.mode).sentences.length
-        return Math.max(0, Math.min(item.index, Math.max(0, count - 1)))
-      })
       const [extraSources, setExtraSources] = useState(() => (Array.isArray(initial.sources) ? initial.sources.filter(isSourceRecord) : []))
       const [activeSourceId, setActiveSourceId] = useState(typeof initial.activeSourceId === 'string' ? initial.activeSourceId : 'edge')
       /** The add-a-source dialog, and its draft fields. */
@@ -2141,7 +2597,6 @@ function mergeStates(local, remote) {
           return next
         })
       }, [])
-      const [status, setStatus] = useState('idle')
       const [errorKind, setErrorKind] = useState('')
       const [noticeKey, setNoticeKey] = useState(() => {
         const item = initialItems.find((candidate) => candidate.id === initialActive)
@@ -2162,27 +2617,6 @@ function mergeStates(local, remote) {
       const [fontDraft, setFontDraft] = useState('')
       /** Which library entry or source is being renamed, and to what. */
       const [renamingItem, setRenamingItem] = useState('')
-      /** The word card: where it is anchored, and what it shows. */
-      const [words, setWords] = useState(() => (Array.isArray(initial.words) ? initial.words : [])
-        .filter((item) => item !== null && typeof item === 'object' && typeof item.word === 'string')
-        .map((item) => ({
-          ...item,
-          id: String(item.id ?? item.word).toLowerCase(),
-          senses: sensesOf(item.senses),
-          translation: sensesOf(item.translation),
-          // A context that does not contain the word came from a search, not
-          // from a sentence; earlier releases stored the reading position.
-          context: typeof item.context === 'string'
-            && item.context.toLowerCase().includes(String(item.word).toLowerCase())
-            ? item.context
-            : '',
-        })))
-      /**
-       * Ids this browser deleted. A shared library cannot express a deletion by
-       * leaving an entry out — a stale copy elsewhere would put it straight back
-       * — so deletions travel as tombstones and win over any older copy.
-       */
-      const [removed, setRemoved] = useState(() => (Array.isArray(initial.removed) ? initial.removed : []))
       const [wordFilter, setWordFilter] = useState('')
       const [openWordId, setOpenWordId] = useState('')
       /** The saved word opened in the list, and whether its entry is still loading. */
@@ -2214,8 +2648,6 @@ function mergeStates(local, remote) {
         ? initial.dictModelEn : null))
       /** Model lists per provider, for whichever slot asks for one. */
       const [modelsByProvider, setModelsByProvider] = useState({})
-      /** Model-written entries, keyed by word, so a kind switch never pays twice. */
-      const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
       const [renamingSource, setRenamingSource] = useState('')
       /** When set, the dialog edits this source instead of adding one. */
       const [editingSource, setEditingSource] = useState('')
@@ -2254,24 +2686,24 @@ function mergeStates(local, remote) {
       /** Where the bundled model sits on disk, shown as the source's location. */
       const [modelDir, setModelDir] = useState('')
 
-      const audioRef = useRef(null)
+      const {
+        items, setItems, activeId, setActiveId, index, setIndex, words, setWords,
+        removed, setRemoved, aiEntries, setAiEntries, persist, saveRef,
+      } = useSharedStore({
+        initial, initialItems, initialActive,
+        extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext,
+        showTranslation, translateSource, translateModel, columnWidth, fontScale,
+        customPct, customPx, dictShow, dictCn, dictEn, dictModelCn, dictModelEn,
+        sections, bundledA, bundledB,
+      })
+
       const rootRef = useRef(null)
       const capsuleRef = useRef(null)
       const listRef = useRef(null)
       const rowRefs = useRef([])
-      const cacheRef = useRef(new Map())
-      const inflightRef = useRef(new Map())
-      const tokenRef = useRef(0)
-      const disposedRef = useRef(false)
-      const saveRef = useRef(null)
       const stateRef = useRef({ index: 0, sentences: [], voiceA: '', voiceB: '', provider: 'edge', rate: 1, loop: false, autoNext: true, status: 'idle' })
       /** Rendered word spans of the sentence on screen, and which one is lit. */
       const wordRefs = useRef([])
-      const sayRef = useRef(null)
-      const [sayingKey, setSayingKey] = useState('')
-      const activeWordRef = useRef(-1)
-      /** Marks and resolved start times for the clip currently loaded. */
-      const timingRef = useRef(null)
 
       /** Place the settings card under its capsule, kept inside the viewport. */
       const openSettings = useCallback(() => {
@@ -2563,16 +2995,6 @@ function mergeStates(local, remote) {
       const setVoiceA = (value) => setVoice(0, value)
       const setVoiceB = (value) => setVoice(1, value)
 
-      useLayoutEffect(() => {
-        stateRef.current = {
-          index, sentences, voiceA, voiceB, provider, rate, loop, autoNext, status,
-          sourceId: activeSource.hostId ?? '',
-          baseUrl: activeSource.baseUrl ?? '',
-          model: activeSource.model ?? '',
-          modelPath: activeSource.modelPath ?? '',
-        }
-      })
-
       /** Read the local provider's state. */
       const refreshModel = useCallback(async () => {
         try {
@@ -2668,321 +3090,14 @@ function mergeStates(local, remote) {
         return sentence !== undefined && sentence.slot === 1 ? live.voiceB : live.voiceA
       }, [])
 
-      /** Read any text out loud in the A voice, without touching the reader. */
-      const speak = useCallback(async (text, key) => {
-        const live = stateRef.current
-        const clean = String(text ?? '').trim()
-        if (clean === '' || typeof Audio !== 'function') return
-        try {
-          if (sayRef.current !== null) {
-            sayRef.current.pause()
-            sayRef.current = null
-          }
-          if (sayingKey === key) { setSayingKey(''); return }
-          const query = live.provider === 'custom'
-            ? `provider=custom&voice=${encodeURIComponent(live.voiceA)}`
-              + `&sourceId=${encodeURIComponent(live.sourceId)}&text=${encodeURIComponent(clean)}`
-            : live.provider === 'local'
-              ? `provider=local&voice=${encodeURIComponent(live.voiceA)}`
-                + `${live.modelPath === '' ? '' : `&modelPath=${encodeURIComponent(live.modelPath)}`}`
-                + `&text=${encodeURIComponent(clean)}`
-              : `provider=edge&voice=${encodeURIComponent(live.voiceA)}&text=${encodeURIComponent(clean)}`
-          setSayingKey(key)
-          const response = await fetch(`${TTS_PATH}?${query}`)
-          if (!response.ok) { setSayingKey(''); return }
-          const blob = await response.blob()
-          const url = URL.createObjectURL(blob)
-          const audio = new Audio(url)
-          audio.playbackRate = live.rate
-          audio.onended = () => { setSayingKey(''); URL.revokeObjectURL(url) }
-          audio.onerror = () => { setSayingKey(''); URL.revokeObjectURL(url) }
-          sayRef.current = audio
-          void audio.play()
-        } catch {
-          setSayingKey('')
-        }
-      }, [sayingKey])
-
-      /** Fetch (or reuse) the clip for one sentence. */
-      const clipFor = useCallback(async (sentence) => {
-        const live = stateRef.current
-        const voice = voiceFor(sentence)
-        const key = `${live.provider}|${voice}|${sentence.text}`
-        const cached = cacheRef.current.get(key)
-        if (cached !== undefined) return cached
-        const pending = inflightRef.current.get(key)
-        if (pending !== undefined) return pending
-        const query = live.provider === 'custom'
-          ? `provider=custom&voice=${encodeURIComponent(voice)}`
-            + `&sourceId=${encodeURIComponent(live.sourceId)}`
-            + `&text=${encodeURIComponent(sentence.text)}`
-          : live.provider === 'local'
-            ? `provider=local&voice=${encodeURIComponent(voice)}`
-              + `${live.modelPath === '' ? '' : `&modelPath=${encodeURIComponent(live.modelPath)}`}`
-              + `&text=${encodeURIComponent(sentence.text)}`
-            : `provider=edge&voice=${encodeURIComponent(voice)}&text=${encodeURIComponent(sentence.text)}`
-        const request = fetch(`${TTS_PATH}?${query}`)
-          .then(async (response) => {
-            if (!response.ok) {
-              if (response.status === 503) {
-                const body = await response.json().catch(() => ({}))
-                const failure = new Error(body.code ?? 'not-installed')
-                failure.name = body.code === 'preparing' ? 'PreparingError' : 'NotInstalledError'
-                throw failure
-              }
-              const failure = new Error(`HTTP ${response.status}`)
-              failure.status = response.status
-              throw failure
-            }
-            const marks = decodeMarks(response.headers.get('x-er-marks'))
-            const blob = await response.blob()
-            const url = URL.createObjectURL(blob)
-            if (disposedRef.current) {
-              URL.revokeObjectURL(url)
-              throw new Error('panel closed')
-            }
-            const clip = { url, marks }
-            cacheRef.current.set(key, clip)
-            return clip
-          })
-          .catch((failure) => {
-            if (failure instanceof TypeError) {
-              const offline = new Error(failure.message)
-              offline.name = 'NetworkError'
-              throw offline
-            }
-            throw failure
-          })
-          .finally(() => { inflightRef.current.delete(key) })
-        inflightRef.current.set(key, request)
-        return request
-      }, [voiceFor])
-
-      /** Warm the clips just after the one playing. */
-      const prefetch = useCallback((from) => {
-        const list = stateRef.current.sentences
-        for (let offset = 1; offset <= PREFETCH; offset += 1) {
-          const sentence = list[from + offset]
-          if (sentence === undefined) return
-          void clipFor(sentence).catch(() => { /* retried on arrival */ })
-        }
-      }, [clipFor])
-
-      /** Light exactly one rendered word, touching the DOM directly so the list never re-renders. */
-      const applyWord = useCallback((position) => {
-        if (activeWordRef.current === position) return
-        const spans = wordRefs.current
-        const previous = spans[activeWordRef.current]
-        if (previous !== undefined && previous !== null) previous.classList.remove('er-w-on')
-        const next = spans[position]
-        if (next !== undefined && next !== null) next.classList.add('er-w-on')
-        activeWordRef.current = position
-      }, [])
-
-      /** Speak one sentence and keep the position in sync with it. */
-      const playAt = useCallback(async (target) => {
-        const list = stateRef.current.sentences
-        if (list.length === 0) return
-        const next = Math.max(0, Math.min(target, list.length - 1))
-        audioRef.current?.pause()
-        setIndex(next)
-        stateRef.current.index = next
-        setNoticeKey('')
-        const token = (tokenRef.current += 1)
-        setStatus('loading')
-        setErrorKind('')
-        if (stateRef.current.provider === 'local') void refreshModel()
-        try {
-          const clip = await clipFor(list[next])
-          if (token !== tokenRef.current) return
-          const audio = audioRef.current
-          if (audio === null) return
-          // Arm word tracking before playback so the first frame has a table.
-          timingRef.current = {
-            words: wordsOf(list[next].text),
-            marks: clip.marks ?? [],
-            times: null,
-          }
-          applyWord(-1)
-          audio.src = clip.url
-          audio.playbackRate = stateRef.current.rate
-          await audio.play()
-          if (token !== tokenRef.current) return
-          setStatus('playing')
-          prefetch(next)
-        } catch (failure) {
-          if (token !== tokenRef.current) return
-          if (failure instanceof Error && failure.name === 'NotAllowedError') {
-            setStatus('idle')
-            setNoticeKey('autoplay')
-            return
-          }
-          if (failure instanceof Error && failure.name === 'NotInstalledError') {
-            setStatus('idle')
-            setErrorKind('notInstalled')
-            void refreshModel()
-            return
-          }
-          if (failure instanceof Error && failure.name === 'PreparingError') {
-            setStatus('idle')
-            setErrorKind('preparing')
-            void refreshModel()
-            return
-          }
-          const name = failure instanceof Error ? failure.name : ''
-          const code = failure?.status
-          setErrorKind(name === 'NetworkError' ? 'network'
-            : code === 413 ? 'tooLong'
-              : code === 502 || code === 500 ? 'server'
-                : 'generic')
-          setStatus('error')
-        }
-      }, [clipFor, prefetch, refreshModel])
-
-      const toggle = useCallback(() => {
-        const audio = audioRef.current
-        if (audio === null) return
-        const live = stateRef.current
-        if (live.status === 'playing') {
-          audio.pause()
-          setStatus('paused')
-          return
-        }
-        if (live.status === 'paused' && audio.src !== '') {
-          audio.playbackRate = live.rate
-          void audio.play().then(() => setStatus('playing')).catch(() => { void playAt(live.index) })
-          return
-        }
-        void playAt(live.status === 'done' ? 0 : live.index)
-      }, [playAt])
-
-      const step = useCallback((delta) => { void playAt(stateRef.current.index + delta) }, [playAt])
-
-
-      // The audio element is mounted for the panel's whole life, so these
-      // listeners stay attached across view switches.
-      useEffect(() => {
-        const audio = audioRef.current
-        if (audio === null) return undefined
-        const onEnded = () => {
-          const live = stateRef.current
-          if (live.loop) { void playAt(live.index); return }
-          // Continuous playback is a choice: with it off a sentence ends and stops.
-          if (live.autoNext === false) { setStatus('done'); setNoticeKey('stopped'); return }
-          if (live.index + 1 < live.sentences.length) { void playAt(live.index + 1); return }
-          setStatus('done')
-        }
-        const onError = () => { setErrorKind('generic'); setStatus('error') }
-        audio.addEventListener('ended', onEnded)
-        audio.addEventListener('error', onError)
-        return () => {
-          audio.removeEventListener('ended', onEnded)
-          audio.removeEventListener('error', onError)
-        }
-      }, [playAt])
-
-      useEffect(() => {
-        if (audioRef.current !== null) audioRef.current.playbackRate = rate
-      }, [rate])
-
-      // Word highlight follows the media clock, so rate changes and seeks keep it true.
-      useEffect(() => {
-        if (status !== 'playing') return undefined
-        const audio = audioRef.current
-        if (audio === null) return undefined
-        let frame = 0
-        const tick = () => {
-          const timing = timingRef.current
-          if (timing !== null && timing.words.length > 0) {
-            if (timing.times === null) {
-              const known = Number.isFinite(audio.duration) && audio.duration > 0 ? audio.duration * 1000 : 0
-              timing.times = buildTimings(timing.words, timing.marks, known)
-            }
-            const now = audio.currentTime * 1000
-            let active = -1
-            for (let position = 0; position < timing.times.length; position += 1) {
-              if (timing.times[position] <= now + 24) active = position
-              else break
-            }
-            applyWord(active)
-          }
-          frame = requestAnimationFrame(tick)
-        }
-        frame = requestAnimationFrame(tick)
-        return () => cancelAnimationFrame(frame)
-      }, [status, index, applyWord])
-
-      /** Write the library out; overrides let a handler persist a state React has not rendered yet. */
-      /**
-       * Send the shared half of the panel state to the host, shortly after it
-       * changes. Debounced because a reading position changes on every sentence;
-       * the host merges by id, so two open panels cannot erase each other.
-       */
-      const storeTimerRef = useRef(0)
-      const storePendingRef = useRef(null)
-      const sendStore = useCallback((payload) => {
-        storePendingRef.current = payload
-        if (storeTimerRef.current !== 0) return
-        storeTimerRef.current = setTimeout(() => {
-          storeTimerRef.current = 0
-          const body = JSON.stringify({ state: storePendingRef.current })
-          void fetch(STORE_PATH, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body,
-          }).catch(() => { /* the next change sends the whole state again */ })
-        }, 600)
-      }, [])
-
-      const persist = useCallback((override) => {
-        const list = override?.items ?? items
-        const gone = override?.removed ?? removed
-        const id = override?.activeId === undefined ? activeId : override.activeId
-        const at = override?.index === undefined ? index : override.index
-        try {
-          window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
-            showTranslation, translateSource, translateModel, autoNext, words, removed: gone, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
-            items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
-          }))
-        } catch { /* storage full or blocked: the panel still works */ }
-        // The library and the word list are user data, not view state: the host
-        // keeps them so the next session, and the next browser, starts with them.
-        sendStore({
-          savedAt: Date.now(),
-          items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
-          words,
-          removed: gone,
-        })
-      }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, removed, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
-
-      // Remember the library, the position, and the settings.
-      useEffect(() => {
-        const write = () => persist()
-        saveRef.current = write
-        const timer = setTimeout(write, 350)
-        return () => { clearTimeout(timer) }
-      }, [persist])
-
-      useEffect(() => () => {
-        disposedRef.current = true
-        saveRef.current?.()
-        if (storeTimerRef.current !== 0) {
-          clearTimeout(storeTimerRef.current)
-          storeTimerRef.current = 0
-          const pending = storePendingRef.current
-          if (pending !== null) {
-            void fetch(STORE_PATH, {
-              method: 'POST',
-              headers: { 'content-type': 'application/json' },
-              body: JSON.stringify({ state: pending }),
-            }).catch(() => { /* nothing left to retry with */ })
-          }
-        }
-        for (const clip of cacheRef.current.values()) URL.revokeObjectURL(clip.url)
-        cacheRef.current.clear()
-        inflightRef.current.clear()
-      }, [])
+      const {
+        audioRef, status, setStatus, sayingKey,
+        playAt, step, toggle, speak, cancelPlayback,
+      } = usePlayback({
+        stateRef, voiceFor, sentences, wordRefs,
+        index, setIndex, rate, loop, autoNext, voiceA, voiceB,
+        activeSource, provider, setNoticeKey, setErrorKind, refreshModel,
+      })
 
       useEffect(() => {
         const box = listRef.current
@@ -2990,42 +3105,6 @@ function mergeStates(local, remote) {
         if (box === null || row === undefined || row === null) return
         box.scrollTo({ top: Math.max(0, row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2), behavior: 'smooth' })
       }, [index, view, activeId])
-
-      /**
-       * Abandon whatever the player is doing: invalidate the in-flight sentence,
-       * drop the loaded clip (it belongs to the engine and time it was fetched
-       * for), and return the transport to idle.
-       */
-      const cancelPlayback = useCallback(() => {
-        tokenRef.current += 1
-        const audio = audioRef.current
-        if (audio !== null) {
-          audio.pause()
-          audio.removeAttribute('src')
-          audio.load?.()
-        }
-        setStatus('idle')
-      }, [])
-
-      /** The voice and engine the loaded clip was made with. */
-      const spokenWith = useRef({ voiceA: '', voiceB: '', provider: '' })
-      const spokenReady = useRef(false)
-
-      // Changing who reads mid-sentence used to do nothing until the next
-      // sentence started, because the clip was already downloaded and playing.
-      useEffect(() => {
-        const previous = spokenWith.current
-        spokenWith.current = { voiceA, voiceB, provider: activeSource.id }
-        if (!spokenReady.current) { spokenReady.current = true; return }
-        if (previous.voiceA === voiceA && previous.voiceB === voiceB && previous.provider === activeSource.id) return
-        const live = stateRef.current
-        if (live.sentences.length === 0) return
-        if (live.status === 'playing') { void playAt(live.index); return }
-        // Nothing is speaking right now: drop the stale clip so the next play
-        // synthesizes with the new voice instead of replaying the old one.
-        if (live.status === 'paused') cancelPlayback()
-      }, [voiceA, voiceB, activeSource.id, playAt, cancelPlayback])
-
 
       /** Translate every sentence of the open dialogue in one request. */
       const translateActive = useCallback(async () => {
