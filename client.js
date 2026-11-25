@@ -1985,6 +1985,96 @@ function mergeStates(local, remote) {
 
   }
 
+  /**
+   * The dictionary card: which word is open, where it sits, and the answer.
+   * Every answer carries a token, so a slow lookup can never land on a newer
+   * one — that guard used to sit loose in the panel body.
+   */
+  function useWordCard({ resolveWord, translateSource, translateOptions, translateModel, t }) {
+    const [card, setCard] = useState(null)
+    const [cardEntry, setCardEntry] = useState(null)
+    const [cardState, setCardState] = useState('idle')
+    const [cardError, setCardError] = useState('')
+    const [query, setQuery] = useState('')
+    const cardTokenRef = useRef(0)
+    const cardRef = useRef(null)
+    cardRef.current = card
+
+    const lookUp = useCallback(async (raw) => {
+      const word = String(raw).trim()
+      if (word === '') return
+      // A right-click right after another one must not be overwritten by the
+      // slower answer of the word before it.
+      const token = cardTokenRef.current + 1
+      cardTokenRef.current = token
+      setCardState('loading')
+      setCardError('')
+      setCardEntry(null)
+      try {
+        const entry = await resolveWord(word)
+        if (cardTokenRef.current !== token) return
+        if (entry !== null) { setCardEntry(entry); setCardState('ready'); return }
+      } catch (error) {
+        if (cardTokenRef.current !== token) return
+        setCardState('failed')
+        setCardError(error instanceof Error ? error.message : t('dict.failed'))
+        return
+      }
+      // Neither slot has an entry: a plain translation is still worth showing.
+      try {
+        const response = await fetch(TRANSLATE_PATH, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            source: translateSource,
+            target: translateOptions?.target ?? 'zh-CN',
+            model: translateModel ?? undefined,
+            texts: [word],
+          }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (cardTokenRef.current !== token) return
+        const translated = Array.isArray(payload?.translations) ? payload.translations[0] : ''
+        if (typeof translated === 'string' && translated !== '') {
+          setCardEntry({ word, phonetic: '', senses: [], translation: [{ pos: '', def: translated }], source: 'translate' })
+          setCardState('ready')
+          return
+        }
+        setCardState('missing')
+      } catch {
+        if (cardTokenRef.current !== token) return
+        setCardState('failed')
+        setCardError(t('dict.failed'))
+      }
+    }, [resolveWord, translateSource, translateOptions, translateModel, t])
+
+    /** Open where the pointer was: viewport coordinates, no panel box. */
+    const openWordCard = useCallback((raw, x, y) => {
+      const word = String(raw).trim()
+      if (word === '') return
+      setCard({ word, x, y, pinned: false })
+      void lookUp(word)
+    }, [lookUp])
+
+    /** The pinned dialog lives top-right until it is dragged. */
+    const openPinnedWord = useCallback((raw) => {
+      const word = String(raw).trim()
+      if (word === '') return
+      setQuery(word)
+      const width = typeof window === 'undefined' ? 1024 : window.innerWidth
+      setCard({ word, x: Math.max(8, width - 272 - 12), y: 12, pinned: true })
+      void lookUp(word)
+    }, [lookUp])
+
+    const closeCard = useCallback(() => setCard(null), [])
+
+    return {
+      card, setCard, cardRef, query, setQuery,
+      cardEntry, setCardEntry, cardState, setCardState, cardError, setCardError,
+      lookUp, openWordCard, openPinnedWord, closeCard,
+    }
+  }
+
     function ReaderBody(props) {
       const { pickDirectory } = props
       const localeId = useSnapshot(props.localeSource.subscribe, props.localeSource.getSnapshot)
@@ -2073,13 +2163,6 @@ function mergeStates(local, remote) {
       /** Which library entry or source is being renamed, and to what. */
       const [renamingItem, setRenamingItem] = useState('')
       /** The word card: where it is anchored, and what it shows. */
-      const [card, setCard] = useState(null)
-      const cardRef = useRef(null)
-      cardRef.current = card
-      const [cardEntry, setCardEntry] = useState(null)
-      const [cardState, setCardState] = useState('idle')
-      const [cardError, setCardError] = useState('')
-      const [query, setQuery] = useState('')
       const [words, setWords] = useState(() => (Array.isArray(initial.words) ? initial.words : [])
         .filter((item) => item !== null && typeof item === 'object' && typeof item.word === 'string')
         .map((item) => ({
@@ -2306,6 +2389,13 @@ function mergeStates(local, remote) {
       }, [dictShow, dictCn, dictEn, dictModelCn, dictModelEn, resolveSource])
 
       /** Fetch (or reuse) the entry the expanded saved word should show. */
+      // --- the dictionary card -------------------------------------------
+      const {
+        card, setCard, cardRef, query, setQuery,
+        cardEntry, setCardEntry, cardState, setCardState, cardError, setCardError,
+        lookUp, openWordCard, openPinnedWord, closeCard,
+      } = useWordCard({ resolveWord, translateSource, translateOptions, translateModel, t })
+
       const loadWordEntry = useCallback(async (word) => {
         const token = openTokenRef.current + 1
         openTokenRef.current = token
@@ -3402,68 +3492,8 @@ function mergeStates(local, remote) {
       }, [panelWidth])
 
       /** Fetch one word for the card: both slots resolve, translation only as a last resort. */
-      const lookUp = useCallback(async (raw) => {
-        const word = String(raw).trim();
-        if (word === '') return;
-        // A right-click right after another one must not be overwritten by the
-        // slower answer of the word before it.
-        const token = cardTokenRef.current + 1;
-        cardTokenRef.current = token;
-        setCardState('loading');
-        setCardError('');
-        setCardEntry(null);
-        try {
-          const entry = await resolveWord(word);
-          if (cardTokenRef.current !== token) return;
-          if (entry !== null) { setCardEntry(entry); setCardState('ready'); return; }
-        } catch (error) {
-          if (cardTokenRef.current !== token) return;
-          setCardState('failed');
-          setCardError(error instanceof Error ? error.message : t('dict.failed'));
-          return;
-        }
-        // Neither slot has an entry: a plain translation is still worth showing.
-        try {
-          const response = await fetch(TRANSLATE_PATH, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({
-              source: translateSource,
-              target: translateOptions?.target ?? 'zh-CN',
-              model: translateModel ?? undefined,
-              texts: [word],
-            }),
-          });
-          const payload = await response.json().catch(() => ({}));
-          if (cardTokenRef.current !== token) return;
-          const translated = Array.isArray(payload?.translations) ? payload.translations[0] : '';
-          if (typeof translated === 'string' && translated !== '') {
-            setCardEntry({ word, phonetic: '', senses: [], translation: [{ pos: '', def: translated }], source: 'translate' });
-            setCardState('ready');
-            return;
-          }
-          setCardState('missing');
-        } catch {
-          if (cardTokenRef.current !== token) return;
-          setCardState('failed');
-          setCardError(t('dict.failed'));
-        }
-      }, [resolveWord, translateSource, translateOptions, translateModel, t])
 
-      const openPinnedWord = useCallback((raw) => {
-        const word = String(raw).trim();
-        if (word === '') return;
-        setQuery(word);
-        setCard({ word, x: Math.max(8, windowWidth - 272 - 12), y: 12, pinned: true });
-        void lookUp(word);
-      }, [lookUp])
 
-      const openWordCard = useCallback((raw, x, y) => {
-        const word = String(raw).trim();
-        if (word === '') return;
-        setCard({ word, x, y, pinned: false });
-        void lookUp(word);
-      }, [lookUp])
 
       /** Keep one entry in the word list, newest first, deduplicated. */
       const saveWord = useCallback((entry) => {
@@ -3744,7 +3774,7 @@ function mergeStates(local, remote) {
         window.addEventListener('mouseup', end)
       }
 
-      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag }
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)
