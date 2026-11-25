@@ -1020,6 +1020,206 @@ function mergeStates(local, remote) {
       }
     }
 
+  /** The library view, split out so the panel body stays readable. */
+  function renderLibraryPage(ui) {
+    const { activeId, confirmDelete, editItem, entry, id, index, item, items, key, left, loadWordEntry, nameDraft, newDialogue, onKeyDown, open, openItem, openTokenRef, openWordId, pageBox, removeItem, renameItem, renamingItem, right, setConfirmDelete, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setRemoved, setRenamingItem, setWords, t, title, togglePin, value, word, wordFilter, words } = ui
+  return h('div', { className: 'er-scroll er-index-wrap', style: pageBox },
+        items.length === 0
+          ? h('p', { className: 'er-empty' }, t('library.empty'))
+          : h('ul', { className: 'er-index' }, [...items]
+            .sort((left, right) => (Number(right.pinned === true) - Number(left.pinned === true))
+              || (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
+            .map((item) => {
+            const parsed = parseDialogue(item.text, item.mode)
+            const count = parsed.sentences.length
+            const at = Number.isInteger(item.index) ? Math.min(item.index, Math.max(0, count - 1)) : 0
+            return h('li', { key: item.id, className: `er-entry${item.id === activeId ? ' er-entry-on' : ''}` },
+              renamingItem === item.id
+                ? h('div', { className: 'er-entry-open' },
+                  h('input', {
+                    className: 'er-input', value: nameDraft, autoFocus: true, spellCheck: false,
+                    'aria-label': t('renamePrompt'),
+                    onChange: (event) => setNameDraft(event.target.value),
+                    onKeyDown: (event) => {
+                      if (event.key === 'Enter') { event.preventDefault(); renameItem(item.id, nameDraft) }
+                      if (event.key === 'Escape') { event.preventDefault(); setRenamingItem('') }
+                    },
+                    onBlur: () => renameItem(item.id, nameDraft),
+                  }))
+                : h('button', { type: 'button', className: 'er-entry-open', onClick: () => openItem(item.id) },
+                  h('span', { className: 'er-entry-title' },
+                    item.pinned === true ? h('span', { className: 'er-entry-pin', 'aria-hidden': true }, glyph(ICON.pin, 11)) : null,
+                    item.title || t('untitled')),
+                  h('span', { className: 'er-entry-meta' }, fill(t('library.position'), { n: at + 1, m: count }))),
+              h('button', {
+                type: 'button', className: `er-entry-act${item.pinned === true ? ' er-entry-act-on' : ''}`,
+                title: item.pinned === true ? t('unpin') : t('pin'),
+                'aria-label': item.pinned === true ? t('unpin') : t('pin'),
+                onClick: () => togglePin(item.id),
+              }, glyph(ICON.pin, 12)),
+              h('button', {
+                type: 'button', className: 'er-entry-act', title: t('library.edit'), 'aria-label': t('library.edit'),
+                onClick: () => editItem(item),
+              }, glyph(ICON.edit, 12)),
+              h('button', {
+                type: 'button', className: 'er-entry-act', title: t('rename'), 'aria-label': t('rename'),
+                onClick: () => { setNameDraft(item.title ?? ''); setRenamingItem(item.id) },
+              }, glyph(ICON.rename, 12)),
+              h('button', {
+                type: 'button',
+                className: `er-entry-del${confirmDelete === item.id ? ' er-entry-del-on' : ''}`,
+                title: t('delete'), 'aria-label': t('delete'),
+                onClick: () => { if (confirmDelete === item.id) removeItem(item.id); else setConfirmDelete(item.id) },
+              }, confirmDelete === item.id ? t('deleteConfirm') : glyph(ICON.close, 13)))
+          })),
+        h('div', { className: 'er-index-foot' },
+          h('button', { type: 'button', className: 'er-cta', onClick: newDialogue }, t('library.new'))))
+
+  }
+
+  /** The wordsPage view, split out so the panel body stays readable. */
+  function renderWordsPage(ui) {
+    const { aiEntries, at, body, closeWord, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dropWord, entry, entryKey, index, item, key, openEntry, openLoading, openPinnedWord, openWordId, pageBox, sayingKey, setWordFilter, speak, t, title, toggleWord, value, visibleWords, wordFilter, words, zh } = ui
+  return h('div', { className: 'er-scroll er-words', style: pageBox },
+        h('div', { className: 'er-words-bar' },
+          h('input', {
+            className: 'er-input', value: wordFilter, spellCheck: false,
+            placeholder: t('words.filter'), 'aria-label': t('words.filter'),
+            onChange: (event) => setWordFilter(event.target.value),
+          })),
+        words.length === 0
+          ? h('p', { className: 'er-empty' }, t('words.empty'))
+          : visibleWords.length === 0
+            ? h('p', { className: 'er-empty' }, t('words.none'))
+            : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
+              const open = openWordId === item.id
+              const resolved = open && openEntry !== null && String(openEntry.word).toLowerCase() === String(item.word).toLowerCase()
+                ? openEntry : null
+              const chinese = resolved === null || dictShow === 'en' ? [] : sensesOf(resolved.translation)
+              const english = resolved === null || dictShow === 'zh' ? [] : sensesOf(resolved.senses)
+              const unsupported = open && resolved !== null && chinese.length === 0 && english.length === 0
+              const hasContext = typeof item.context === 'string' && item.context.trim() !== ''
+              const cachedCn = aiEntries[entryKey(item.word, dictCn, dictModelCn)]
+              const cachedEn = aiEntries[entryKey(item.word, dictEn, dictModelEn)]
+              const glossCn = sensesOf(cachedCn?.translation)[0]?.def ?? sensesOf(cachedCn?.senses)[0]?.def ?? ''
+              const glossEn = sensesOf(cachedEn?.senses)[0]?.def ?? sensesOf(cachedEn?.translation)[0]?.def ?? ''
+              // The row prints what the chosen dictionary shows, and nothing else:
+              // in Chinese-only mode an English definition here is a bug, not a
+              // fallback. With both languages the Chinese gloss reads first.
+              const gloss = dictShow === 'zh' ? glossCn : dictShow === 'en' ? glossEn : (glossCn !== '' ? glossCn : glossEn)
+              return h('li', { key: item.id, className: `er-wrow${open ? ' er-wrow-on' : ''}` },
+                h('div', { className: 'er-wrow-head' },
+                  h('button', {
+                    type: 'button', className: 'er-entry-open', 'aria-expanded': open ? 'true' : 'false',
+                    onClick: () => toggleWord(item),
+                  },
+                    h('span', { className: 'er-entry-title' }, item.word),
+                    h('span', { className: 'er-entry-meta' }, gloss === '' ? t('words.noGloss') : gloss)),
+                  h('button', {
+                    type: 'button',
+                    className: `er-entry-act${sayingKey === `w:${item.id}` ? ' er-entry-act-on' : ''}`,
+                    title: t('words.say'), 'aria-label': t('words.say'),
+                    onClick: () => { void speak(item.word, `w:${item.id}`) },
+                  }, glyph(ICON.speaker, 13)),
+                  h('button', {
+                    type: 'button', className: 'er-entry-act',
+                    title: t('words.lookup'), 'aria-label': t('words.lookup'),
+                    onClick: () => { closeWord(); openPinnedWord(item.word) },
+                  }, glyphLine(ICON.book, 14)),
+                  h('button', {
+                    type: 'button', className: 'er-entry-del', title: t('words.remove'), 'aria-label': t('words.remove'),
+                    onClick: () => dropWord(item.id),
+                  }, glyph(ICON.close, 13))),
+                open
+                  ? h('div', { className: 'er-wrow-body' },
+                    openLoading
+                      ? h('p', { className: 'er-wordcard-note' }, t('dict.loading'))
+                      : resolved === null
+                        ? h('p', { className: 'er-wordcard-note' }, t('dict.missing'))
+                        : unsupported
+                          ? h('p', { className: 'er-wordcard-note' }, t('words.emptyEntry'))
+                          : null,
+                    chinese.length > 0
+                      ? h('div', { className: 'er-wrow-zh' }, chinese.map((sense, at) => h('div', {
+                        key: at, className: 'er-wordcard-trline',
+                      },
+                        sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
+                        h('span', null, sense.def))))
+                      : null,
+                    english.length > 0
+                      ? h('div', { className: 'er-wrow-en' }, english.map((sense, at) => h('div', { key: at, className: 'er-sense' },
+                        h('div', { className: 'er-sense-line' },
+                          sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
+                          h('span', null, sense.def)),
+                        sense.example === ''
+                          ? null
+                          : h('div', { className: 'er-sense-eg' },
+                            h('span', null, sense.example),
+                            h('button', {
+                              type: 'button',
+                              className: `er-say${sayingKey === `e:${item.id}:${at}` ? ' er-say-on' : ''}`,
+                              title: t('words.sayExample'), 'aria-label': t('words.sayExample'),
+                              onClick: () => { void speak(sense.example, `e:${item.id}:${at}`) },
+                            }, glyph(ICON.speaker, 12))))))
+                      : null,
+                    h('p', { className: 'er-wrow-ctx' },
+                      h('span', { className: 'er-wrow-ctx-label' }, t('words.context')),
+                      h('span', { className: 'er-wrow-ctx-text' }, hasContext ? item.context : t('words.noContext')),
+                      h('button', {
+                        type: 'button',
+                        className: `er-say er-say-ctx${sayingKey === `s:${item.id}` ? ' er-say-on' : ''}`,
+                        title: t('words.sayContext'), 'aria-label': t('words.sayContext'),
+                        disabled: !hasContext,
+                        onClick: () => { void speak(item.context, `s:${item.id}`) },
+                      }, glyph(ICON.speaker, 12))))
+                  : null)
+            })))
+
+  }
+
+  /** The editor view, split out so the panel body stays readable. */
+  function renderEditor(ui) {
+    const { cancelEditor, dialogue, draft, draftDoc, draftMode, editingId, key, onKeyDown, setDraft, setDraftMode, startReading, t, value } = ui
+  return h('div', { className: 'er-editor' },
+        h('textarea', {
+          className: 'er-textarea',
+          value: draft,
+          spellCheck: false,
+          'aria-label': t('empty.hint'),
+          placeholder: t('empty.placeholder'),
+          onChange: (event) => setDraft(event.target.value),
+          onKeyDown: (event) => {
+            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); startReading() }
+          },
+        }),
+        h('p', { className: 'er-hint' }, t(draftDoc.mode === 'dialogue' ? 'mode.hint.dialogue' : 'mode.hint.article')),
+        h('div', { className: 'er-editor-bar' },
+          h('label', { className: 'er-inline' },
+            h('span', { className: 'er-inline-label' }, t('mode.label')),
+            h('select', {
+              className: 'er-plain-select', value: draftMode,
+              onChange: (event) => setDraftMode(event.target.value),
+            }, [
+              ['auto', t('mode.auto')],
+              ['article', t('mode.article')],
+              ['dialogue', t('mode.dialogue')],
+            ].map(([value, label]) => h('option', { key: value, value }, label)))),
+          h('span', { className: 'er-grow' }),
+          h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: () => setDraft(SAMPLE) }, t('empty.sample')),
+          h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: cancelEditor }, t('cancel')),
+          h('button', {
+            type: 'button', className: 'er-cta er-cta-strong',
+            disabled: draft.trim() === '',
+            onClick: startReading,
+          }, editingId === null ? t('start') : t('save'))))
+
+      // --------------------------------------------------------------- reading
+      /**
+       * Only the sentence on screen becomes word spans; every other sentence stays
+       * one text node, so a 200-sentence article never pays for the highlight.
+       */
+  }
+
     function ReaderBody(props) {
       const { pickDirectory } = props
       const localeId = useSnapshot(props.localeSource.subscribe, props.localeSource.getSnapshot)
@@ -2736,222 +2936,6 @@ function mergeStates(local, remote) {
           h('span', { className: 'er-capsule-text' }, engineLabel),
           glyph(ICON.caret, 13)))
 
-      // --------------------------------------------------------------- library
-      const library = h('div', { className: 'er-scroll er-index-wrap', style: pageBox },
-        items.length === 0
-          ? h('p', { className: 'er-empty' }, t('library.empty'))
-          : h('ul', { className: 'er-index' }, [...items]
-            .sort((left, right) => (Number(right.pinned === true) - Number(left.pinned === true))
-              || (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
-            .map((item) => {
-            const parsed = parseDialogue(item.text, item.mode)
-            const count = parsed.sentences.length
-            const at = Number.isInteger(item.index) ? Math.min(item.index, Math.max(0, count - 1)) : 0
-            return h('li', { key: item.id, className: `er-entry${item.id === activeId ? ' er-entry-on' : ''}` },
-              renamingItem === item.id
-                ? h('div', { className: 'er-entry-open' },
-                  h('input', {
-                    className: 'er-input', value: nameDraft, autoFocus: true, spellCheck: false,
-                    'aria-label': t('renamePrompt'),
-                    onChange: (event) => setNameDraft(event.target.value),
-                    onKeyDown: (event) => {
-                      if (event.key === 'Enter') { event.preventDefault(); renameItem(item.id, nameDraft) }
-                      if (event.key === 'Escape') { event.preventDefault(); setRenamingItem('') }
-                    },
-                    onBlur: () => renameItem(item.id, nameDraft),
-                  }))
-                : h('button', { type: 'button', className: 'er-entry-open', onClick: () => openItem(item.id) },
-                  h('span', { className: 'er-entry-title' },
-                    item.pinned === true ? h('span', { className: 'er-entry-pin', 'aria-hidden': true }, glyph(ICON.pin, 11)) : null,
-                    item.title || t('untitled')),
-                  h('span', { className: 'er-entry-meta' }, fill(t('library.position'), { n: at + 1, m: count }))),
-              h('button', {
-                type: 'button', className: `er-entry-act${item.pinned === true ? ' er-entry-act-on' : ''}`,
-                title: item.pinned === true ? t('unpin') : t('pin'),
-                'aria-label': item.pinned === true ? t('unpin') : t('pin'),
-                onClick: () => togglePin(item.id),
-              }, glyph(ICON.pin, 12)),
-              h('button', {
-                type: 'button', className: 'er-entry-act', title: t('library.edit'), 'aria-label': t('library.edit'),
-                onClick: () => editItem(item),
-              }, glyph(ICON.edit, 12)),
-              h('button', {
-                type: 'button', className: 'er-entry-act', title: t('rename'), 'aria-label': t('rename'),
-                onClick: () => { setNameDraft(item.title ?? ''); setRenamingItem(item.id) },
-              }, glyph(ICON.rename, 12)),
-              h('button', {
-                type: 'button',
-                className: `er-entry-del${confirmDelete === item.id ? ' er-entry-del-on' : ''}`,
-                title: t('delete'), 'aria-label': t('delete'),
-                onClick: () => { if (confirmDelete === item.id) removeItem(item.id); else setConfirmDelete(item.id) },
-              }, confirmDelete === item.id ? t('deleteConfirm') : glyph(ICON.close, 13)))
-          })),
-        h('div', { className: 'er-index-foot' },
-          h('button', { type: 'button', className: 'er-cta', onClick: newDialogue }, t('library.new'))))
-
-      // ---------------------------------------------------------------- editor
-      const visibleWords = words.filter((item) => {
-        const needle = wordFilter.trim().toLowerCase()
-        if (needle === '') return true
-        const zh = sensesOf(item.translation).map((sense) => sense.def).join(' ')
-        return String(item.word).toLowerCase().includes(needle)
-          || sensesOf(item.senses).some((sense) => sense.def.toLowerCase().includes(needle))
-          || zh.toLowerCase().includes(needle)
-      })
-
-      /** Open one saved word in place, resolving it through the current dictionary. */
-      const closeWord = () => {
-        openTokenRef.current += 1
-        setOpenWordId('')
-        setOpenEntry(null)
-        setOpenLoading(false)
-      }
-      /** Remove a saved word here and everywhere else. */
-      const dropWord = useCallback((id) => {
-        setWords((current) => current.filter((entry) => entry.id !== id))
-        setRemoved((current) => [...current, { kind: 'word', id, at: Date.now() }].slice(-TOMBSTONE_LIMIT))
-      }, [])
-
-      const toggleWord = (item) => {
-        if (openWordId === item.id) { closeWord(); return }
-        setOpenWordId(item.id)
-        void loadWordEntry(item.word)
-      }
-
-
-      const wordsPage = h('div', { className: 'er-scroll er-words', style: pageBox },
-        h('div', { className: 'er-words-bar' },
-          h('input', {
-            className: 'er-input', value: wordFilter, spellCheck: false,
-            placeholder: t('words.filter'), 'aria-label': t('words.filter'),
-            onChange: (event) => setWordFilter(event.target.value),
-          })),
-        words.length === 0
-          ? h('p', { className: 'er-empty' }, t('words.empty'))
-          : visibleWords.length === 0
-            ? h('p', { className: 'er-empty' }, t('words.none'))
-            : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
-              const open = openWordId === item.id
-              const resolved = open && openEntry !== null && String(openEntry.word).toLowerCase() === String(item.word).toLowerCase()
-                ? openEntry : null
-              const chinese = resolved === null || dictShow === 'en' ? [] : sensesOf(resolved.translation)
-              const english = resolved === null || dictShow === 'zh' ? [] : sensesOf(resolved.senses)
-              const unsupported = open && resolved !== null && chinese.length === 0 && english.length === 0
-              const hasContext = typeof item.context === 'string' && item.context.trim() !== ''
-              const cachedCn = aiEntries[entryKey(item.word, dictCn, dictModelCn)]
-              const cachedEn = aiEntries[entryKey(item.word, dictEn, dictModelEn)]
-              const glossCn = sensesOf(cachedCn?.translation)[0]?.def ?? sensesOf(cachedCn?.senses)[0]?.def ?? ''
-              const glossEn = sensesOf(cachedEn?.senses)[0]?.def ?? sensesOf(cachedEn?.translation)[0]?.def ?? ''
-              // The row prints what the chosen dictionary shows, and nothing else:
-              // in Chinese-only mode an English definition here is a bug, not a
-              // fallback. With both languages the Chinese gloss reads first.
-              const gloss = dictShow === 'zh' ? glossCn : dictShow === 'en' ? glossEn : (glossCn !== '' ? glossCn : glossEn)
-              return h('li', { key: item.id, className: `er-wrow${open ? ' er-wrow-on' : ''}` },
-                h('div', { className: 'er-wrow-head' },
-                  h('button', {
-                    type: 'button', className: 'er-entry-open', 'aria-expanded': open ? 'true' : 'false',
-                    onClick: () => toggleWord(item),
-                  },
-                    h('span', { className: 'er-entry-title' }, item.word),
-                    h('span', { className: 'er-entry-meta' }, gloss === '' ? t('words.noGloss') : gloss)),
-                  h('button', {
-                    type: 'button',
-                    className: `er-entry-act${sayingKey === `w:${item.id}` ? ' er-entry-act-on' : ''}`,
-                    title: t('words.say'), 'aria-label': t('words.say'),
-                    onClick: () => { void speak(item.word, `w:${item.id}`) },
-                  }, glyph(ICON.speaker, 13)),
-                  h('button', {
-                    type: 'button', className: 'er-entry-act',
-                    title: t('words.lookup'), 'aria-label': t('words.lookup'),
-                    onClick: () => { closeWord(); openPinnedWord(item.word) },
-                  }, glyphLine(ICON.book, 14)),
-                  h('button', {
-                    type: 'button', className: 'er-entry-del', title: t('words.remove'), 'aria-label': t('words.remove'),
-                    onClick: () => dropWord(item.id),
-                  }, glyph(ICON.close, 13))),
-                open
-                  ? h('div', { className: 'er-wrow-body' },
-                    openLoading
-                      ? h('p', { className: 'er-wordcard-note' }, t('dict.loading'))
-                      : resolved === null
-                        ? h('p', { className: 'er-wordcard-note' }, t('dict.missing'))
-                        : unsupported
-                          ? h('p', { className: 'er-wordcard-note' }, t('words.emptyEntry'))
-                          : null,
-                    chinese.length > 0
-                      ? h('div', { className: 'er-wrow-zh' }, chinese.map((sense, at) => h('div', {
-                        key: at, className: 'er-wordcard-trline',
-                      },
-                        sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
-                        h('span', null, sense.def))))
-                      : null,
-                    english.length > 0
-                      ? h('div', { className: 'er-wrow-en' }, english.map((sense, at) => h('div', { key: at, className: 'er-sense' },
-                        h('div', { className: 'er-sense-line' },
-                          sense.pos === '' ? null : h('span', { className: 'er-sense-pos' }, sense.pos),
-                          h('span', null, sense.def)),
-                        sense.example === ''
-                          ? null
-                          : h('div', { className: 'er-sense-eg' },
-                            h('span', null, sense.example),
-                            h('button', {
-                              type: 'button',
-                              className: `er-say${sayingKey === `e:${item.id}:${at}` ? ' er-say-on' : ''}`,
-                              title: t('words.sayExample'), 'aria-label': t('words.sayExample'),
-                              onClick: () => { void speak(sense.example, `e:${item.id}:${at}`) },
-                            }, glyph(ICON.speaker, 12))))))
-                      : null,
-                    h('p', { className: 'er-wrow-ctx' },
-                      h('span', { className: 'er-wrow-ctx-label' }, t('words.context')),
-                      h('span', { className: 'er-wrow-ctx-text' }, hasContext ? item.context : t('words.noContext')),
-                      h('button', {
-                        type: 'button',
-                        className: `er-say er-say-ctx${sayingKey === `s:${item.id}` ? ' er-say-on' : ''}`,
-                        title: t('words.sayContext'), 'aria-label': t('words.sayContext'),
-                        disabled: !hasContext,
-                        onClick: () => { void speak(item.context, `s:${item.id}`) },
-                      }, glyph(ICON.speaker, 12))))
-                  : null)
-            })))
-
-      const editor = h('div', { className: 'er-editor' },
-        h('textarea', {
-          className: 'er-textarea',
-          value: draft,
-          spellCheck: false,
-          'aria-label': t('empty.hint'),
-          placeholder: t('empty.placeholder'),
-          onChange: (event) => setDraft(event.target.value),
-          onKeyDown: (event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); startReading() }
-          },
-        }),
-        h('p', { className: 'er-hint' }, t(draftDoc.mode === 'dialogue' ? 'mode.hint.dialogue' : 'mode.hint.article')),
-        h('div', { className: 'er-editor-bar' },
-          h('label', { className: 'er-inline' },
-            h('span', { className: 'er-inline-label' }, t('mode.label')),
-            h('select', {
-              className: 'er-plain-select', value: draftMode,
-              onChange: (event) => setDraftMode(event.target.value),
-            }, [
-              ['auto', t('mode.auto')],
-              ['article', t('mode.article')],
-              ['dialogue', t('mode.dialogue')],
-            ].map(([value, label]) => h('option', { key: value, value }, label)))),
-          h('span', { className: 'er-grow' }),
-          h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: () => setDraft(SAMPLE) }, t('empty.sample')),
-          h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: cancelEditor }, t('cancel')),
-          h('button', {
-            type: 'button', className: 'er-cta er-cta-strong',
-            disabled: draft.trim() === '',
-            onClick: startReading,
-          }, editingId === null ? t('start') : t('save'))))
-
-      // --------------------------------------------------------------- reading
-      /**
-       * Only the sentence on screen becomes word spans; every other sentence stays
-       * one text node, so a 200-sentence article never pays for the highlight.
-       */
       const renderLine = (sentence, position) => {
         if (position !== index) return sentence.text
         const parts = sentence.text.split(/(\s+)/)
@@ -3651,9 +3635,41 @@ function mergeStates(local, remote) {
           },
         }, glyphLine(ICON.book, 16)))
 
-      const body = view === 'words' ? wordsPage
-        : view === 'library' ? library
-        : view === 'editor' ? editor
+      // Everything the three page views read from the panel's state.
+      const visibleWords = words.filter((item) => {
+        const needle = wordFilter.trim().toLowerCase()
+        if (needle === '') return true
+        const zh = sensesOf(item.translation).map((sense) => sense.def).join(' ')
+        return String(item.word).toLowerCase().includes(needle)
+          || sensesOf(item.senses).some((sense) => sense.def.toLowerCase().includes(needle))
+          || zh.toLowerCase().includes(needle)
+      })
+
+      /** Open one saved word in place, resolving it through the current dictionary. */
+      const closeWord = () => {
+        openTokenRef.current += 1
+        setOpenWordId('')
+        setOpenEntry(null)
+        setOpenLoading(false)
+      }
+      /** Remove a saved word here and everywhere else. */
+      const dropWord = useCallback((id) => {
+        setWords((current) => current.filter((entry) => entry.id !== id))
+        setRemoved((current) => [...current, { kind: 'word', id, at: Date.now() }].slice(-TOMBSTONE_LIMIT))
+      }, [])
+
+      const toggleWord = (item) => {
+        if (openWordId === item.id) { closeWord(); return }
+        setOpenWordId(item.id)
+        void loadWordEntry(item.word)
+      }
+
+
+      const ui = { pageBox, wordFilter, setWordFilter, t, words, visibleWords, openWordId, openEntry, dictShow, aiEntries, entryKey, dictCn, dictEn, dictModelCn, dictModelEn, toggleWord, sayingKey, speak, closeWord, openPinnedWord, dropWord, openLoading, items, activeId, renamingItem, nameDraft, setNameDraft, setRenamingItem, openItem, togglePin, editItem, renameItem, confirmDelete, setConfirmDelete, removeItem, newDialogue, draft, setDraft, draftMode, setDraftMode, draftDoc, editingId, startReading, cancelEditor }
+
+      const body = view === 'words' ? renderWordsPage(ui)
+        : view === 'library' ? renderLibraryPage(ui)
+        : view === 'editor' ? renderEditor(ui)
           // A fragment, not an array: an array of elements needs keys, and these
           // three are never reordered.
           : h(React.Fragment, null, list, errorBar, transport)
