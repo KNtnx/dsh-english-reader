@@ -175,24 +175,15 @@ export async function lookUpChinese(word) {
 }
 
 /**
- * Ask the configured model for a dictionary entry.
+ * The prompt every define request runs on.
  *
- * The prompt is written to produce what a good learner's dictionary prints:
- * a full-sentence English definition rather than a synonym list, a short
- * Chinese gloss, and one natural example. Strict JSON keeps the parsing
- * boring, and the reply is cached per word so switching dictionary kinds
- * never pays for the same word twice.
+ * It is written to produce what a good learner's dictionary prints: a
+ * full-sentence English definition rather than a synonym list, a short Chinese
+ * gloss, and one natural example. Strict JSON keeps the parsing boring.
+ * @returns {string} the system prompt.
  */
-export async function defineWithModel(ctx, word, requested) {
-  const cached = modelEntries.get(word);
-  if (cached !== undefined) return cached;
-  const llm = ctx.get('llm');
-  if (llm === undefined) throw new Error('this Harness exposes no model service');
-  const route = (typeof requested?.provider === 'string' && typeof requested?.model === 'string' && requested.model !== '')
-    ? { provider: requested.provider, model: requested.model }
-    : defaultModelRoute(ctx);
-  if (route === undefined || route.model === '') throw new Error('no model is configured');
-  const system = [
+function buildDefinePrompt() {
+  return [
     'You are the editor of a learner\'s dictionary in the style of Collins COBUILD and the',
     'Concise Oxford: full sentences that explain a word through its use, never bare synonym',
     'lists, no encyclopaedic padding, no etymology unless it changes the meaning.',
@@ -202,11 +193,37 @@ export async function defineWithModel(ctx, word, requested) {
     'the English definition must be a sentence a learner can read aloud; the example must not',
     'repeat the definition; if the word has a common figurative sense, include it after the literal one.',
   ].join(' ');
+}
+
+/**
+ * Where a define request goes: the panel's explicit route, else the Harness default.
+ * @param {object} ctx - the plugin context.
+ * @param {{provider?: string, model?: string}} [requested] - the panel's choice.
+ * @returns {{provider: string, model: string}|undefined} the route, when there is one.
+ */
+function defineRoute(ctx, requested) {
+  if (typeof requested?.provider === 'string' && typeof requested?.model === 'string' && requested.model !== '') {
+    return { provider: requested.provider, model: requested.model };
+  }
+  return defaultModelRoute(ctx);
+}
+
+/**
+ * Stream one answer and hand back the text the model wrote.
+ *
+ * A failure the model reports is raised here, at the stream, so a truncated
+ * reply never reaches the parser.
+ * @param {object} llm - the Harness model service.
+ * @param {{provider: string, model: string}} route - where to ask.
+ * @param {string} word - the word or phrase to define.
+ * @returns {Promise<string>} the raw reply.
+ */
+async function collectDefineAnswer(llm, route, word) {
   let output = '';
   for await (const chunk of llm.stream({
     provider: route.provider,
     model: route.model,
-    system,
+    system: buildDefinePrompt(),
     messages: [{ role: 'user', content: [{ type: 'text', text: word }] }],
     temperature: 0.3,
   })) {
@@ -215,15 +232,31 @@ export async function defineWithModel(ctx, word, requested) {
       throw new Error(chunk.reason.failure?.message ?? 'the model refused to define the word');
     }
   }
+  return output;
+}
+
+/**
+ * Pull the JSON object out of a reply that may also carry prose around it.
+ * @param {string} output - the raw reply.
+ * @returns {object} the parsed answer.
+ */
+function parseDefineAnswer(output) {
   const start = output.indexOf('{');
   const end = output.lastIndexOf('}');
   if (start < 0 || end <= start) throw new Error('the model did not answer with JSON');
-  let parsed;
   try {
-    parsed = JSON.parse(output.slice(start, end + 1));
+    return JSON.parse(output.slice(start, end + 1));
   } catch {
     throw new Error('the model answered with JSON that does not parse');
   }
+}
+
+/**
+ * Normalize the model's senses, dropping whatever is not a usable definition.
+ * @param {object} parsed - the parsed answer.
+ * @returns {Array<{pos: string, def: string, zh: string, example: string}>} the senses.
+ */
+function toSenses(parsed) {
   const senses = (Array.isArray(parsed.senses) ? parsed.senses : [])
     .filter((sense) => sense !== null && typeof sense === 'object')
     .map((sense) => ({
@@ -234,17 +267,55 @@ export async function defineWithModel(ctx, word, requested) {
     }))
     .filter((sense) => sense.def !== '');
   if (senses.length === 0) throw new Error('the model returned no usable sense');
-  const entry = {
+  return senses;
+}
+
+/**
+ * Assemble the entry the panel receives from a parsed answer.
+ * @param {object} parsed - the parsed answer.
+ * @param {string} word - the word that was asked for.
+ * @returns {object} the entry.
+ */
+function toModelEntry(parsed, word) {
+  const senses = toSenses(parsed);
+  return {
     word: String(parsed.word ?? word),
     phonetic: String(parsed.phonetic ?? '').replace(/^\/+|\/+$/g, ''),
     senses,
     source: 'model',
   };
+}
+
+/**
+ * Keep a paid-for entry, evicting the oldest so the map cannot grow without bound.
+ * @param {string} word - the word.
+ * @param {object} entry - the entry to keep.
+ * @returns {object} the same entry.
+ */
+function rememberModelEntry(word, entry) {
   modelEntries.set(word, entry);
   if (modelEntries.size > DICTIONARY_LIMIT) {
     const oldest = modelEntries.keys().next();
     if (!oldest.done) modelEntries.delete(oldest.value);
   }
   return entry;
+}
+
+/**
+ * Ask the configured model for a dictionary entry.
+ *
+ * A cached entry answers for free, so switching dictionary kinds never pays for
+ * the same word twice. Every failure is raised as an error — an entry has no
+ * cheaper source to fall back to — and the route turns it into a 502.
+ */
+export async function defineWithModel(ctx, word, requested) {
+  const cached = modelEntries.get(word);
+  if (cached !== undefined) return cached;
+  const llm = ctx.get('llm');
+  if (llm === undefined) throw new Error('this Harness exposes no model service');
+  const route = defineRoute(ctx, requested);
+  if (route === undefined || route.model === '') throw new Error('no model is configured');
+  const parsed = parseDefineAnswer(await collectDefineAnswer(llm, route, word));
+  return rememberModelEntry(word, toModelEntry(parsed, word));
 }
 

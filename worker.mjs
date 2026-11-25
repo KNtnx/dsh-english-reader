@@ -125,6 +125,67 @@ function loadKokoro(modelPath = '') {
 }
 
 /**
+ * Take the first complete JSON object off the front of a metadata buffer.
+ *
+ * The scan is brace- and quote-aware, so a brace inside a string never closes a
+ * frame and a frame split across chunks is not mistaken for a complete one.
+ * @param {string} text - the buffered metadata.
+ * @returns {{frame: string, rest: string}|null} the frame and the text after it,
+ *   or null while no frame is complete yet.
+ */
+function takeMetadataFrame(text) {
+  let depth = 0
+  let start = -1
+  let inString = false
+  let escaped = false
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (character === '\\') escaped = true
+      else if (character === '"') inString = false
+      continue
+    }
+    if (character === '"') { inString = true; continue }
+    if (character === '{') {
+      if (depth === 0) start = index
+      depth += 1
+    } else if (character === '}') {
+      if (depth === 0) continue
+      depth -= 1
+      if (depth === 0 && start >= 0) {
+        return { frame: text.slice(start, index + 1), rest: text.slice(index + 1) }
+      }
+    }
+  }
+  return null
+}
+
+/**
+ * Append the word boundaries one metadata frame carries, in stream order.
+ *
+ * Offsets arrive in 100-nanosecond units; marks are milliseconds, rounded the
+ * way the audio clock is. A frame that does not parse is skipped, not fatal.
+ * @param {string} frame - one complete JSON object.
+ * @param {Array<{text: string, at: number, dur: number}>} marks - where to append.
+ */
+function pushFrameMarks(frame, marks) {
+  try {
+    const payload = JSON.parse(frame)
+    for (const entry of payload?.Metadata ?? []) {
+      if (entry?.Type !== 'WordBoundary') continue
+      const text = entry?.Data?.text?.Text
+      if (typeof text !== 'string') continue
+      marks.push({
+        text,
+        at: Math.round(Number(entry.Data.Offset) / 10000),
+        dur: Math.round(Number(entry.Data.Duration) / 10000),
+      })
+    }
+  } catch { /* an unparseable frame is skipped, not fatal */ }
+}
+
+/**
  * Pull the word boundaries out of the Edge metadata stream.
  *
  * The payload arrives as concatenated JSON objects that may be split anywhere,
@@ -139,44 +200,11 @@ function collectMarks(stream) {
     let buffer = '';
     const marks = [];
     const drain = () => {
-      let depth = 0;
-      let start = -1;
-      let inString = false;
-      let escaped = false;
-      for (let index = 0; index < buffer.length; index += 1) {
-        const character = buffer[index];
-        if (inString) {
-          if (escaped) escaped = false;
-          else if (character === '\\') escaped = true;
-          else if (character === '"') inString = false;
-          continue;
-        }
-        if (character === '"') { inString = true; continue; }
-        if (character === '{') {
-          if (depth === 0) start = index;
-          depth += 1;
-        } else if (character === '}') {
-          if (depth === 0) continue;
-          depth -= 1;
-          if (depth === 0 && start >= 0) {
-            try {
-              const payload = JSON.parse(buffer.slice(start, index + 1));
-              for (const entry of payload?.Metadata ?? []) {
-                if (entry?.Type !== 'WordBoundary') continue;
-                const text = entry?.Data?.text?.Text;
-                if (typeof text !== 'string') continue;
-                marks.push({
-                  text,
-                  at: Math.round(Number(entry.Data.Offset) / 10000),
-                  dur: Math.round(Number(entry.Data.Duration) / 10000),
-                });
-              }
-            } catch { /* an unparseable frame is skipped, not fatal */ }
-            buffer = buffer.slice(index + 1);
-            index = -1;
-            start = -1;
-          }
-        }
+      let taken = takeMetadataFrame(buffer);
+      while (taken !== null) {
+        pushFrameMarks(taken.frame, marks);
+        buffer = taken.rest;
+        taken = takeMetadataFrame(buffer);
       }
     };
     stream.setEncoding('utf8');
