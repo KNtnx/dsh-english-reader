@@ -48,6 +48,10 @@ for (const name of GLOBALS) {
 globalThis.self = window
 globalThis.window = window
 globalThis.document = window.document
+// jsdom reports 1024x768 for the window but not as own properties of globalThis.
+Object.defineProperty(globalThis, 'innerWidth', { value: 1024, writable: true })
+Object.defineProperty(globalThis, 'innerHeight', { value: 900, writable: true })
+
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
 // jsdom ships requestAnimationFrame only on the window; the panel calls it bare.

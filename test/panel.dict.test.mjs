@@ -272,3 +272,23 @@ test('a model-written entry is found by the list, not only by the card', async (
     await api.unmount()
   }
 })
+
+test('the card opens at the word that was clicked', async () => {
+  // Reported from the browser: right-clicking a word low on the page put the card
+  // near the top, because the click was made relative to the panel's box instead
+  // of the viewport.
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    const word = api.qa('.er-w').find((node) => node.textContent.replace(/[^a-z]/gi, '') === 'revive')
+    assert.ok(word !== undefined, 'the sentence words are rendered')
+    const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 420, clientY: 300 })
+    word.dispatchEvent(event)
+    await api.waitFor(() => api.q('.er-wordcard') !== null, { label: 'the card' })
+    const card = api.q('.er-wordcard')
+    assert.equal(card.style.position, 'fixed', 'the card floats over the page')
+    assert.equal(card.style.left, '420px', `it opens where the pointer was, horizontally (${card.getAttribute('style')})`)
+    assert.equal(card.style.top, '300px', 'and vertically')
+  } finally {
+    await api.unmount()
+  }
+})

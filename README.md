@@ -163,7 +163,7 @@ node --check index.js client.js worker.mjs
 dsh plugin --profile web add link:$(pwd)
 ```
 
-测试会在 jsdom 里挂载真正的面板并点击真正的控件——之前漏掉的问题，几乎都是两个操作同时写同一份状态。覆盖了什么、故意没覆盖什么（排版、音频、真实网络），以及遇到 bug 时怎么写测试，见 [docs/TESTING.md](docs/TESTING.md)。
+测试会在 jsdom 里挂载真正的面板并点击真正的控件——之前漏掉的问题，几乎都是两个操作同时写同一份状态。覆盖了什么、故意没覆盖什么（排版、音频、真实网络），以及遇到 bug 时怎么写测试，见 [测试流程（含浏览器复核）](docs/TESTING.zh.md) 与 [docs/TESTING.md](docs/TESTING.md)。
 
 ```
 package.json        插件清单（dsh.bundle.patch + dsh.client）

@@ -1022,7 +1022,7 @@ function mergeStates(local, remote) {
 
   /** The library view, split out so the panel body stays readable. */
   function renderLibraryPage(ui) {
-    const { activeId, confirmDelete, editItem, entry, id, index, item, items, key, left, loadWordEntry, nameDraft, newDialogue, onKeyDown, open, openItem, openTokenRef, openWordId, pageBox, removeItem, renameItem, renamingItem, right, setConfirmDelete, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setRemoved, setRenamingItem, setWords, t, title, togglePin, value, word, wordFilter, words } = ui
+    const { activeId, confirmDelete, editItem, index, items, nameDraft, newDialogue, onKeyDown, openItem, pageBox, removeItem, renameItem, renamingItem, setConfirmDelete, setNameDraft, setRenamingItem, t, togglePin } = ui
   return h('div', { className: 'er-scroll er-index-wrap', style: pageBox },
         items.length === 0
           ? h('p', { className: 'er-empty' }, t('library.empty'))
@@ -1079,7 +1079,7 @@ function mergeStates(local, remote) {
 
   /** The wordsPage view, split out so the panel body stays readable. */
   function renderWordsPage(ui) {
-    const { aiEntries, at, body, closeWord, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dropWord, entry, entryKey, index, item, key, openEntry, openLoading, openPinnedWord, openWordId, pageBox, sayingKey, setWordFilter, speak, t, title, toggleWord, value, visibleWords, wordFilter, words, zh } = ui
+    const { aiEntries, closeWord, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dropWord, entryKey, index, openEntry, openLoading, openPinnedWord, openWordId, pageBox, sayingKey, setWordFilter, speak, t, toggleWord, visibleWords, wordFilter, words } = ui
   return h('div', { className: 'er-scroll er-words', style: pageBox },
         h('div', { className: 'er-words-bar' },
           h('input', {
@@ -1179,7 +1179,7 @@ function mergeStates(local, remote) {
 
   /** The editor view, split out so the panel body stays readable. */
   function renderEditor(ui) {
-    const { cancelEditor, dialogue, draft, draftDoc, draftMode, editingId, key, onKeyDown, setDraft, setDraftMode, startReading, t, value } = ui
+    const { cancelEditor, draft, draftDoc, draftMode, editingId, onKeyDown, setDraft, setDraftMode, startReading, t } = ui
   return h('div', { className: 'er-editor' },
         h('textarea', {
           className: 'er-textarea',
@@ -1222,7 +1222,7 @@ function mergeStates(local, remote) {
 
   /** The header block, split out so the panel body stays readable. */
   function renderHeader(ui) {
-    const { capsuleRef, editActive, engineLabel, goView, headerNote, headerTitle, modelBusy, openSettings, returnView, setSettingsOpen, settingsOpen, showTranslation, t, title, toggleTranslation, total, translating, view, words } = ui
+    const { capsuleRef, editActive, engineLabel, goView, headerNote, headerTitle, modelBusy, openSettings, returnView, setSettingsOpen, settingsOpen, showTranslation, t, toggleTranslation, total, translating, view, words } = ui
   return h('div', { className: 'er-head' },
         h('div', { className: 'er-head-text' },
           h('div', { className: 'er-title' }, headerTitle),
@@ -1268,7 +1268,7 @@ function mergeStates(local, remote) {
 
   /** The list block, split out so the panel body stays readable. */
   function renderList(ui) {
-    const { body, column, columnActual, doc, index, key, listRef, node, noticeKey, playAt, renderLine, rowRefs, sentence, sentences, showing, status, t, title, total, translating, translation, voiceLabel, width, zh } = ui
+    const { columnActual, doc, index, listRef, playAt, renderLine, rowRefs, sentences, showing, t, total, translation, voiceLabel } = ui
   return h('div', { className: 'er-body-wrap' },
         h('div', { className: 'er-scroll er-read', ref: listRef },
         total === 0
@@ -1312,7 +1312,7 @@ function mergeStates(local, remote) {
 
   /** The transport block, split out so the panel body stays readable. */
   function renderTransport(ui) {
-    const { activeSource, autoNext, count, entry, index, installModel, key, live, loop, model, modelBusy, modelDir, modelLoaded, modelReady, name, nameDraft, next, onKeyDown, openSourceEditor, provider, rate, removeSource, renameSource, renamingSource, setAutoNext, setLoop, setNameDraft, setRate, setRenamingSource, sources, status, step, switchSource, t, title, toggle, total, value, width, translating, noticeKey } = ui
+    const { autoNext, index, loop, rate, setAutoNext, setLoop, setRate, status, step, t, toggle, total, translating, noticeKey } = ui
       const statusText = translating ? t('trans.working')
         : status === 'loading' ? t('loading')
           : total === 0 ? ''
@@ -1365,7 +1365,7 @@ function mergeStates(local, remote) {
 
   /** The settingsCard block, split out so the panel body stays readable. */
   function renderSettingsCard(ui) {
-    const { activeSource, body, card, collinsDraft, collinsReady, collinsSaved, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, entry, id, key, left, list, loadVoices, loadingVoices, maxHeight, model, modelChoices, modelOf, modelsByProvider, name, onKeyDown, provider, rememberVoice, routeOf, routes, row, saveCollinsKey, sections, setAddKind, setAddOpen, setCollinsDraft, setCollinsSaved, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, settingsOpen, sheetPlace, showTranslation, sources, t, title, toggle, toggleSection, toggleTranslation, top, total, translateError, translateModel, translateOptions, translateRoute, translateSource, value, voice, voiceA, voiceB, voiceChoices, voices, voicesListed, width, zh, modelReady, modelBusy, installModel, modelDir, renamingSource, modelLoaded, nameDraft, openSourceEditor, removeSource, removed, renameSource, setNameDraft, setRenamingSource, switchSource } = ui
+    const { activeSource, card, collinsDraft, collinsReady, collinsSaved, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, loadVoices, loadingVoices, model, modelChoices, modelOf, modelsByProvider, onKeyDown, provider, rememberVoice, routeOf, routes, saveCollinsKey, sections, setAddKind, setAddOpen, setCollinsDraft, setCollinsSaved, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, settingsOpen, sheetPlace, showTranslation, sources, t, toggle, toggleSection, toggleTranslation, total, translateError, translateModel, translateOptions, translateRoute, translateSource, voiceA, voiceB, voiceChoices, voices, voicesListed, modelReady, modelBusy, installModel, modelDir, renamingSource, modelLoaded, nameDraft, openSourceEditor, removeSource, removed, renameSource, setNameDraft, setRenamingSource, switchSource } = ui
 
       // --------------------------------------------------------------- settings
       // Once the model is usable the facts already say so; this block is only the
@@ -1649,7 +1649,7 @@ function mergeStates(local, remote) {
 
   /** The addDialog block, split out so the panel body stays readable. */
   function renderAddDialog(ui) {
-    const { addError, addKind, addOpen, addSource, apiModels, awaitBundled, body, draftBaseUrl, draftId, draftKey, draftModel, draftName, draftPath, draftProtocol, editingSource, entry, fetchModels, fetchingModels, field, installModel, key, model, modelBusy, modelReady, panelHeight, pickModelDir, probe, setAddKind, setAddOpen, setApiModels, setAwaitBundled, setDraftBaseUrl, setDraftId, setDraftKey, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setProbe, status, t, testEndpoint, title, validating, value, card } = ui
+    const { addError, addKind, addOpen, addSource, apiModels, awaitBundled, draftBaseUrl, draftId, draftKey, draftModel, draftName, draftPath, draftProtocol, editingSource, fetchModels, fetchingModels, installModel, model, modelBusy, modelReady, panelHeight, pickModelDir, probe, setAddKind, setAddOpen, setApiModels, setAwaitBundled, setDraftBaseUrl, setDraftId, setDraftKey, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setProbe, status, t, testEndpoint, validating, card } = ui
   return addOpen ? [
         h('div', { key: 'veil', className: 'er-veil', onMouseDown: () => setAddOpen(false) }),
         h('div', {
@@ -1805,14 +1805,15 @@ function mergeStates(local, remote) {
 
   /** The wordCard block, split out so the panel body stays readable. */
   function renderWordCard(ui) {
-    const { at, body, card, cardEntry, cardError, cardHeight, cardState, dict, item, key, left, lookUp, maxHeight, onKeyDown, panelHeight, panelWidth, query, ready, right, saveWord, sayingKey, setCard, setQuery, speak, t, title, top, value, word, words } = ui
+    const { card, cardEntry, cardError, cardHeight, cardState, windowHeight, windowWidth, dict, lookUp, onKeyDown, query, saveWord, sayingKey, setCard, setQuery, speak, t, words } = ui
   return card === null ? null : h('div', {
         className: `er-wordcard${card.pinned ? ' er-wordcard-pin' : ''}`,
         style: card.pinned
-          ? { right: '12px', top: '12px', maxHeight: `${cardHeight}px` }
+          ? { position: 'fixed', right: '12px', top: '12px', maxHeight: `${cardHeight}px` }
           : {
-            left: `${Math.max(8, Math.min(card.x, Math.max(8, panelWidth - 272)))}px`,
-            top: `${Math.max(8, Math.min(card.y, Math.max(8, panelHeight - cardHeight - 8)))}px`,
+            position: 'fixed',
+            left: `${Math.max(8, Math.min(card.x, Math.max(8, windowWidth - 272)))}px`,
+            top: `${Math.max(8, Math.min(card.y, Math.max(8, windowHeight - cardHeight - 8)))}px`,
             maxHeight: `${cardHeight}px`,
           },
         role: 'dialog', 'aria-label': t('dict.title'),
@@ -1877,7 +1878,7 @@ function mergeStates(local, remote) {
 
   /** The errorBar block, split out so the panel body stays readable. */
   function renderErrorBar(ui) {
-    const { errorKind, fontDraft, index, installModel, notice, playAt, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, t, widthDraft } = ui
+    const { errorKind, fontDraft, index, installModel, playAt, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, t, widthDraft } = ui
   return errorKind === ''
         ? null
         : h('div', { className: 'er-notice er-notice-err', role: 'alert' },
@@ -1907,7 +1908,7 @@ function mergeStates(local, remote) {
 
   /** The displayBar block, split out so the panel body stays readable. */
   function renderDisplayBar(ui) {
-    const { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, at, columnWidth, commitFont, commitWidth, customPct, customPx, dict, editingFont, editingWidth, entry, fontDraft, fontScale, id, item, key, loadWordEntry, onKeyDown, openTokenRef, openWordId, setCard, setCardEntry, setCardState, setColumnWidth, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setOpenEntry, setOpenLoading, setOpenWordId, setQuery, setRemoved, setWidthDraft, setWords, step, t, title, value, view, widthDraft, word, wordFilter, words } = ui
+    const { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, columnWidth, customPct, customPx, dict, editingFont, editingWidth, fontDraft, fontScale, onKeyDown, setCard, setCardEntry, setCardState, setColumnWidth, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setQuery, setWidthDraft, t, view, widthDraft } = ui
   return view === 'editor' ? null : h('div', { className: 'er-display' },
         editingWidth
           ? h('div', { className: 'er-custom' },
@@ -3670,8 +3671,9 @@ function mergeStates(local, remote) {
             title: t('dict.hint'),
             onContextMenu: (event) => {
               event.preventDefault()
-              const rect = rootRef.current?.getBoundingClientRect?.()
-              openWordCard(part, event.clientX - (rect?.left ?? 0), event.clientY - (rect?.top ?? 0))
+              // Viewport coordinates: the card is fixed, so it must not depend on
+              // the panel's box (which scrolls and resizes).
+              openWordCard(part, event.clientX, event.clientY)
             },
           }, part)
         })
@@ -3706,7 +3708,13 @@ function mergeStates(local, remote) {
         void loadWordEntry(item.word)
       }
 
-      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed }
+      // The card floats over the page, so it is placed in viewport coordinates and
+      // never depends on the panel's own box (which scrolls and resizes).
+      const windowWidth = typeof window === 'undefined' ? panelWidth : window.innerWidth
+      const windowHeight = typeof window === 'undefined' ? panelHeight : window.innerHeight
+      const cardHeight = Math.max(180, Math.min(windowHeight - 24, 420))
+
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)

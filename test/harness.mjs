@@ -95,6 +95,12 @@ export function createHost(options = {}) {
       return json({ translations: texts.map((text) => `译[${body.source}]:${text}`) })
     }
     if (path === '/api-dsh-english-reader/tts') {
+      if (options.tts === 'fail') {
+        return new Response('speech synthesis failed: speech worker stopped (code 1)', {
+          status: 502,
+          headers: { 'content-type': 'text/plain' },
+        })
+      }
       return new Response(new Uint8Array([0]), { status: 200, headers: { 'content-type': 'audio/mpeg' } })
     }
     return json({ ok: false, error: `no mock for ${method} ${path}` }, { status: 404 })

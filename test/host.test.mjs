@@ -12,8 +12,8 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { readFileSync, readdirSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // The host keeps its files under DSH_HOME; point that at a scratch folder so a
 // test never reads or writes the user's real dictionary key or model folder.
@@ -292,4 +292,22 @@ test('the host forgets what a panel deleted', async () => {
   })
   const final = await callHandler(route)
   assert.ok(!final.body.state.words.map((word) => word.id).includes('drop'), 'a stale panel cannot restore it')
+})
+
+test('every module points at files that exist', () => {
+  // The host used to spawn `./worker.mjs` from index.js. After the split that
+  // relative path pointed inside host/, so synthesis died with MODULE_NOT_FOUND
+  // while every route test still passed.
+  const hostDir = fileURLToPath(new URL('../host/', import.meta.url))
+  const missing = []
+  for (const name of readdirSync(hostDir)) {
+    if (!name.endsWith('.js')) continue
+    const file = join(hostDir, name)
+    for (const match of readFileSync(file, 'utf8').matchAll(/new URL\(['"]([^'"]+)['"],\s*import\.meta\.url\)/g)) {
+      const target = new URL(match[1], pathToFileURL(file))
+      if (!existsSync(target)) missing.push(`${name} -> ${match[1]}`)
+    }
+  }
+  assert.deepEqual(missing, [], `modules reference files that do not exist: ${missing.join(', ')}`)
+  assert.ok(existsSync(join(hostDir, '../worker.mjs')), 'the speech worker is where the host expects it')
 })

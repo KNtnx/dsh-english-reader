@@ -217,7 +217,8 @@ export let stdoutBuffer = '';
 export function startWorker() {
   if (worker !== null) return worker;
   workerStderr = '';
-  const script = fileURLToPath(new URL('./worker.mjs', import.meta.url));
+  // The worker is the plugin's own script, one directory above this module.
+  const script = fileURLToPath(new URL('../worker.mjs', import.meta.url));
   const child = spawn(process.execPath, [script], {
     cwd: dirname(script),
     env: {
