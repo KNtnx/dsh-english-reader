@@ -99,3 +99,33 @@ test('changing the voice re-reads the sentence that is playing', async () => {
     await api.unmount()
   }
 })
+
+test('the page follows the reading line until the switch is turned off', async () => {
+  // Asked for: when a reader scrolls away to study a paragraph, the next sentence
+  // must not pull the page back.
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  const scrolled = []
+  const original = Element.prototype.scrollTo
+  Element.prototype.scrollTo = function scrollTo(options) { scrolled.push({ node: this, top: options?.top }) }
+  try {
+    await api.click(playButton(api))
+    await api.waitFor(() => ttsCalls(api).length > 0, { label: 'the first clip' })
+    await api.click(api.q('button[aria-label="Next sentence"]'))
+    await api.waitFor(() => scrolled.length > 0, { label: 'the page following the sentence' })
+
+    const follow = api.q('button[aria-label="Follow the sentence being read"]')
+    assert.ok(follow !== null, 'the transport has a follow switch')
+    assert.equal(follow.getAttribute('aria-checked'), 'true', 'it follows by default')
+    await api.click(follow)
+    await api.settle()
+    assert.equal(api.q('button[aria-label="Follow the sentence being read"]').getAttribute('aria-checked'), 'false')
+
+    const before = scrolled.length
+    await api.click(api.q('button[aria-label="Next sentence"]'))
+    await api.settle()
+    assert.equal(scrolled.length, before, 'the page stayed where the reader put it')
+  } finally {
+    Element.prototype.scrollTo = original
+    await api.unmount()
+  }
+})

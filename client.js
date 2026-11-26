@@ -295,6 +295,7 @@ window.__ModuleLoader__.load({
         'next': 'Next sentence',
         'loop': 'Loop this sentence',
         'autoNext': 'Continue to the next sentence',
+        'autoScroll': 'Follow the sentence being read',
         'stopped': 'Stopped',
         'loading': 'Preparing audio…',
         'paused': 'Paused',
@@ -526,6 +527,7 @@ window.__ModuleLoader__.load({
         'next': '下一句',
         'loop': '单句循环',
         'autoNext': '连读下一句',
+        'autoScroll': '跟随朗读滚动',
         'stopped': '已停止',
         'loading': '正在准备语音…',
         'paused': '已暂停',
@@ -634,7 +636,8 @@ window.__ModuleLoader__.load({
         if (trimmed === '') { pendingBlank = true; continue }
         const match = trimmed.match(SPEAKER)
         entries.push({
-          speaker: match === null ? null : match[1].trim(),
+          follow: 'M12 4v9m0 0 3.5-3.5M12 13 8.5 9.5M5 18h14',
+      speaker: match === null ? null : match[1].trim(),
           text: match === null ? trimmed : match[2].trim(),
           hardBreak: pendingBlank,
         })
@@ -1330,7 +1333,7 @@ function mergeStates(local, remote) {
 
   /** The transport block, split out so the panel body stays readable. */
   function renderTransport(ui) {
-    const { autoNext, index, loop, rate, setAutoNext, setLoop, setRate, status, step, t, toggle, total, translating, noticeKey } = ui
+    const { autoNext, index, loop, rate, setAutoNext, setLoop, setRate, status, step, t, toggle, total, translating, noticeKey, autoScroll, setAutoScroll } = ui
       const statusText = translating ? t('trans.working')
         : status === 'loading' ? t('loading')
           : total === 0 ? ''
@@ -1370,6 +1373,12 @@ function mergeStates(local, remote) {
           role: 'switch', 'aria-checked': autoNext ? 'true' : 'false',
           onClick: () => setAutoNext((value) => !value),
         }, glyph(ICON.chain, 16)),
+        h('button', {
+          type: 'button', className: `er-glyph${autoScroll ? ' er-glyph-on' : ''}`,
+          'aria-label': t('autoScroll'), title: t('autoScroll'),
+          role: 'switch', 'aria-checked': autoScroll ? 'true' : 'false',
+          onClick: () => setAutoScroll((value) => !value),
+        }, glyph(ICON.follow, 16)),
         h('span', { className: 'er-grow' }),
         notice === '' ? null : h('span', { className: 'er-notice-text' }, notice),
         h('span', { className: 'er-count', role: 'status', 'aria-live': 'polite' }, statusText),
@@ -2114,7 +2123,7 @@ function mergeStates(local, remote) {
    */
   function useSharedStore({
     initial, initialItems, initialActive,
-    extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext,
+    extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll,
     showTranslation, translateSource, translateModel, columnWidth, fontScale,
     customPct, customPx, dictShow, dictCn, dictEn, dictModelCn, dictModelEn,
     sections, bundledA, bundledB,
@@ -2185,7 +2194,7 @@ function mergeStates(local, remote) {
       const at = override?.index === undefined ? index : override.index
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-          version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, columnWidth, fontScale, customPct, customPx,
+          version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll, columnWidth, fontScale, customPct, customPx,
           showTranslation, translateSource, translateModel, autoNext, words, removed: gone, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
           items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
         }))
@@ -2198,7 +2207,7 @@ function mergeStates(local, remote) {
         words,
         removed: gone,
       })
-    }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, removed, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
+    }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, removed, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
 
     // Remember the library, the position, and the settings.
     useEffect(() => {
@@ -2606,6 +2615,7 @@ function mergeStates(local, remote) {
       const [rate, setRate] = useState(() => pickRate(initial.rate))
       const [loop, setLoop] = useState(() => initial.loop === true)
       const [autoNext, setAutoNext] = useState(() => initial.autoNext !== false)
+      const [autoScroll, setAutoScroll] = useState(initial.autoScroll !== false)
       const [draft, setDraft] = useState('')
       const [draftMode, setDraftMode] = useState(() => initialItems.find((item) => item.id === initialActive)?.mode ?? 'auto')
       const [editingId, setEditingId] = useState(null)
@@ -2712,7 +2722,7 @@ function mergeStates(local, remote) {
         removed, setRemoved, aiEntries, setAiEntries, persist, saveRef,
       } = useSharedStore({
         initial, initialItems, initialActive,
-        extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext,
+        extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll,
         showTranslation, translateSource, translateModel, columnWidth, fontScale,
         customPct, customPx, dictShow, dictCn, dictEn, dictModelCn, dictModelEn,
         sections, bundledA, bundledB,
@@ -3121,11 +3131,14 @@ function mergeStates(local, remote) {
       })
 
       useEffect(() => {
+        // Following the reading line is a choice: a reader who scrolls away to
+        // study a paragraph does not want the page pulled back per sentence.
+        if (!autoScroll) return
         const box = listRef.current
         const row = rowRefs.current[index]
         if (box === null || row === undefined || row === null) return
         box.scrollTo({ top: Math.max(0, row.offsetTop - box.clientHeight / 2 + row.clientHeight / 2), behavior: 'smooth' })
-      }, [index, view, activeId])
+      }, [index, view, activeId, autoScroll])
 
       /** Translate every sentence of the open dialogue in one request. */
       const translateActive = useCallback(async () => {
@@ -3874,7 +3887,7 @@ function mergeStates(local, remote) {
         window.addEventListener('mouseup', end)
       }
 
-      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef }
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef, autoScroll, setAutoScroll }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)
