@@ -349,9 +349,10 @@ test('dragging the pinned dialog does not close it or eat the input', async () =
   }
 })
 
-test('a word with punctuation is recognised as saved', async () => {
-  // Reported: "jealousy." was saved, the card still offered to save it, and the
-  // button said nothing when pressed. The row keeps the id without punctuation.
+test('the card saves a punctuated word and takes it back', async () => {
+  // Reported twice: "jealousy." was saved but the card still offered to save it,
+  // and pressing the button did nothing. It now says where the word stands, and
+  // pressing it moves the word to the other side.
   const api = await launchPanel({ state: FIXTURE_STATE })
   try {
     const clickWord = async (text) => {
@@ -364,18 +365,24 @@ test('a word with punctuation is recognised as saved', async () => {
 
     const before = await clickWord('it.')
     assert.equal(before.textContent, 'Save word')
-    assert.equal(before.disabled, false)
     await api.click(before)
     await api.waitFor(() => api.q('.er-wordcard .er-add')?.textContent === 'Saved', { label: 'the saved state' })
-    assert.equal(api.q('.er-wordcard .er-add').disabled, true, 'pressing it again would do nothing')
-    assert.equal(api.q('.er-wordcard .er-add').getAttribute('aria-pressed'), 'true')
 
-    // Close the card and ask for the same word again: it must already read Saved.
+    // Saved, but the button stays live: pressing it again removes the word.
+    const saved = api.q('.er-wordcard .er-add')
+    assert.equal(saved.disabled, false, 'the same button takes the word back out')
+    assert.equal(saved.title, 'Remove from words')
+    await api.click(saved)
+    await api.waitFor(() => api.q('.er-wordcard .er-add')?.textContent === 'Save word', { label: 'the unsaved state' })
+
+    // Save it again, then ask for the same punctuated word in a fresh card.
+    await api.click(api.q('.er-wordcard .er-add'))
+    await api.waitFor(() => api.q('.er-wordcard .er-add')?.textContent === 'Saved', { label: 'saved again' })
     await api.click(api.q('.er-wordcard .er-glyph[aria-label="Close"]'))
     await api.settle()
     const again = await clickWord('it.')
     assert.equal(again.textContent, 'Saved', 'the card remembers the word is saved')
-    assert.equal(again.disabled, true)
+    assert.equal(again.getAttribute('aria-pressed'), 'true')
   } finally {
     await api.unmount()
   }

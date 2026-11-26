@@ -136,6 +136,7 @@ window.__ModuleLoader__.load({
         'dict.hint': 'Right-click for the definition',
         'dict.save': 'Save word',
         'dict.saved': 'Saved',
+        'dict.unsave': 'Remove from words',
         'words.title': 'Saved words',
         'words.filter': 'Filter words or meanings',
         'words.empty': 'No saved words yet. In the reader, right-click any word in the sentence being read.',
@@ -366,6 +367,7 @@ window.__ModuleLoader__.load({
         'dict.hint': '右键查看释义',
         'dict.save': '收藏单词',
         'dict.saved': '已收藏',
+        'dict.unsave': '取消收藏',
         'words.title': '我的单词',
         'words.filter': '筛选单词或释义',
         'words.empty': '还没有收藏的单词。在阅读时，右键正在朗读那句里的任意单词。',
@@ -1821,7 +1823,7 @@ function mergeStates(local, remote) {
 
   /** The wordCard block, split out so the panel body stays readable. */
   function renderWordCard(ui) {
-    const { card, cardEntry, cardError, cardHeight, cardState, windowHeight, windowWidth, startCardDrag, dict, lookUp, onKeyDown, query, saveWord, sayingKey, setCard, setQuery, speak, t, words } = ui
+    const { card, cardEntry, cardError, cardHeight, cardState, windowHeight, windowWidth, startCardDrag, dict, dropWord, lookUp, onKeyDown, query, saveWord, sayingKey, setCard, setQuery, speak, t, words } = ui
   return card === null ? null : h('div', {
         className: `er-wordcard${card.pinned ? ' er-wordcard-pin' : ''}`,
         style: {
@@ -1892,9 +1894,13 @@ function mergeStates(local, remote) {
                       return h('button', {
                         type: 'button',
                         className: `er-add er-add-plain${saved ? ' er-add-saved' : ''}`,
-                        disabled: saved,
+                        title: saved ? t('dict.unsave') : t('dict.save'),
                         'aria-pressed': saved ? 'true' : 'false',
-                        onClick: () => saveWord({ ...cardEntry, word: cardEntry.word }),
+                        // One button, two actions: it says where the word stands
+                        // and pressing it moves it to the other side.
+                        onClick: () => (saved
+                          ? dropWord(wordId(cardEntry.word))
+                          : saveWord({ ...cardEntry, word: cardEntry.word })),
                       }, saved ? t('dict.saved') : t('dict.save'))
                     })() : null)))
 
