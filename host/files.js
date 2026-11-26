@@ -61,11 +61,15 @@ export async function writeCollinsKey(key) {
 export async function readStore() {
   try {
     const parsed = JSON.parse(await readFile(storeFile(), 'utf8'));
-    if (parsed === null || typeof parsed !== 'object') return null;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
     return {
+      // Sections this module does not own are carried through untouched: the
+      // store file is shared, so dropping an unknown key would erase it.
+      ...parsed,
       savedAt: Number.isFinite(parsed.savedAt) ? parsed.savedAt : 0,
       items: Array.isArray(parsed.items) ? parsed.items : [],
       words: Array.isArray(parsed.words) ? parsed.words : [],
+      folders: Array.isArray(parsed.folders) ? parsed.folders : [],
       removed: Array.isArray(parsed.removed) ? parsed.removed : [],
     };
   } catch {
@@ -113,12 +117,19 @@ export function mergeStore(current, incoming) {
     const split = key.indexOf(':');
     return { kind: key.slice(0, split), id: key.slice(split + 1), at };
   }).sort((left, right) => left.at - right.at).slice(-500);
-  return {
+  const merged = {
     savedAt: Math.max(Number(current?.savedAt ?? 0), Number(incoming.savedAt ?? 0)),
     items: union(current?.items, incoming.items, 'item', 'updatedAt').slice(0, 500),
     words: union(current?.words, incoming.words, 'word', 'addedAt').slice(0, 2000),
+    folders: union(current?.folders, incoming.folders, 'folder', 'createdAt').slice(0, 200),
     removed,
   };
+  // Whatever else the file holds belongs to another section: keep it, with the
+  // incoming copy winning, instead of silently deleting it on every save.
+  for (const [key, value] of Object.entries({ ...(current ?? {}), ...(incoming ?? {}) })) {
+    if (!(key in merged)) merged[key] = value;
+  }
+  return merged;
 }
 
 /**

@@ -556,6 +556,8 @@ function sharedState(state) {
     savedAt: Number.isFinite(state.savedAt) ? state.savedAt : Date.now(),
     items: state.items.slice(0, 500),
     words: state.words.slice(0, 2000),
+    // Folders classify items and words; they are part of the shared library.
+    folders: Array.isArray(state.folders) ? state.folders.slice(0, 200) : [],
     removed: Array.isArray(state.removed) ? state.removed.slice(-500) : [],
   };
 }

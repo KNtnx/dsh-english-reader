@@ -1,0 +1,290 @@
+/**
+ * The model-facing `english_reader` tool: the definition it registers, and the
+ * library it edits.
+ *
+ * The host keeps its data under DSH_HOME, so every case points that at a scratch
+ * folder: a run never reads or writes the library the panel is using.
+ */
+
+import { test } from 'node:test'
+import assert from 'node:assert/strict'
+import { mkdir, mkdtemp, readFile, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+
+process.env.DSH_HOME = await mkdtemp(join(tmpdir(), 'er-tool-test-'))
+const { ACTIONS, englishReaderTool, mountTool } = await import('../host/tool.js')
+const { apply } = await import('../index.js')
+
+const tool = englishReaderTool()
+const run = (args) => tool.execute(args)
+
+/** Point the host at a fresh scratch folder; DSH_HOME is read on every call. */
+async function scratch() {
+  const home = await mkdtemp(join(tmpdir(), 'er-tool-test-'))
+  process.env.DSH_HOME = home
+  return home
+}
+
+/** The library file as the host wrote it. */
+async function stored(home) {
+  return JSON.parse(await readFile(join(home, 'dsh-english-reader', 'library.json'), 'utf8'))
+}
+
+/** Write a library file by hand, the way an older panel would have left it. */
+async function seed(home, state) {
+  await mkdir(join(home, 'dsh-english-reader'), { recursive: true })
+  await writeFile(join(home, 'dsh-english-reader', 'library.json'), JSON.stringify(state))
+}
+
+/** A context shaped like the host's, with the services the plugin asks for. */
+function fakeContext(services = {}) {
+  const context = {
+    effect: (fn) => { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {} },
+    inject: (deps, callback) => { callback(services) },
+    ...services,
+  }
+  return context
+}
+
+test('the tool declares one action field and a description the model can route on', () => {
+  assert.equal(tool.name, 'english_reader')
+  assert.match(tool.description, /saved words/)
+  assert.match(tool.description, /dialogues/)
+  assert.match(tool.description, /dictionary settings/)
+  assert.deepEqual(tool.parameters.required, ['action'])
+  assert.deepEqual(tool.parameters.properties.action.enum, ACTIONS)
+  assert.equal(tool.parameters.properties.action.type, 'string')
+  const rendered = tool.output.render({ action: 'list_words' }, { ok: true })
+  assert.deepEqual(JSON.parse(rendered[0].text), { ok: true })
+  assert.deepEqual(tool.output.schema.required, ['ok'])
+})
+
+test('mounting registers the tool once a tool registry is there', () => {
+  const registered = []
+  const asked = []
+  const context = {
+    inject: (deps, callback) => { asked.push(deps); callback({ tools: { register: (definition) => registered.push(definition) } }) },
+  }
+  mountTool(context)
+  assert.deepEqual(asked, [['tools']])
+  assert.equal(registered.length, 1)
+  assert.equal(registered[0].name, 'english_reader')
+})
+
+test('the plugin still loads when a host has no tool registry', () => {
+  // The routes are the plugin; the tool is the optional half. A context without
+  // `inject` and without `tools` is what a headless host hands the plugin.
+  const routes = new Map()
+  const context = {
+    effect: (fn) => { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {} },
+    webServer: { register: (route) => { routes.set(route.path, route); return () => {} } },
+  }
+  assert.doesNotThrow(() => mountTool(context))
+  assert.doesNotThrow(() => apply(context, {}))
+  assert.ok(routes.size > 0, 'every panel route is installed anyway')
+})
+
+test('the plugin mounts the tool when the host does have a registry', () => {
+  const registered = []
+  const services = { tools: { register: (definition) => registered.push(definition) } }
+  const routes = new Map()
+  const context = fakeContext({
+    ...services,
+    webServer: { register: (route) => { routes.set(route.path, route); return () => {} } },
+  })
+  apply(context, {})
+  assert.equal(registered.length, 1)
+  assert.equal(registered[0].name, 'english_reader')
+  assert.ok(routes.size > 0)
+})
+
+test('a saved word is listed, deduplicated and then gone with a tombstone', async () => {
+  const home = await scratch()
+
+  const added = await run({ action: 'add_word', word: 'Jealousy.', context: 'She felt a pang of jealousy.' })
+  assert.equal(added.ok, true)
+  assert.equal(added.created, true)
+  assert.equal(added.word.id, 'jealousy')
+
+  const listed = await run({ action: 'list_words' })
+  assert.equal(listed.total, 1)
+  assert.deepEqual(listed.words.map((entry) => entry.word), ['Jealousy.'])
+  assert.equal(listed.words[0].context, 'She felt a pang of jealousy.')
+
+  // The panel's id rule keeps "Jealousy." and "jealousy" as one entry.
+  const again = await run({ action: 'add_word', word: 'jealousy', context: 'A jealous look.' })
+  assert.equal(again.created, false)
+  const deduped = await run({ action: 'list_words' })
+  assert.equal(deduped.total, 1)
+  assert.equal(deduped.words[0].context, 'A jealous look.')
+
+  const removed = await run({ action: 'remove_word', word: 'jealousy' })
+  assert.equal(removed.ok, true)
+  assert.equal(removed.existed, true)
+  assert.deepEqual((await run({ action: 'list_words' })).words, [])
+
+  const file = await stored(home)
+  assert.deepEqual(file.words, [], 'the word left the library')
+  assert.deepEqual(file.removed.map((entry) => `${entry.kind}:${entry.id}`), ['word:jealousy'])
+  assert.ok(file.removed[0].at > 0, 'the deletion carries the moment it happened')
+})
+
+test('a word keeps the fields the tool does not know about', async () => {
+  const home = await scratch()
+  await seed(home, {
+    savedAt: 1,
+    items: [],
+    words: [{
+      id: 'dream',
+      word: 'dream',
+      addedAt: 1,
+      folderId: 'f1',
+      note: 'the panel wrote this',
+      senses: [{ pos: 'n', def: 'a series of images while asleep', example: 'a vivid dream' }],
+      translation: [{ pos: 'n', def: '梦' }],
+    }],
+    removed: [],
+    folders: [{ id: 'f1', name: 'Reading', kind: 'word', createdAt: 1 }],
+  })
+
+  const listed = await run({ action: 'list_words' })
+  assert.deepEqual(listed.words[0].senses,
+    [{ pos: 'n', def: 'a series of images while asleep', example: 'a vivid dream' }])
+  assert.deepEqual(listed.words[0].translation, [{ pos: 'n', def: '梦' }])
+
+  const added = await run({ action: 'add_word', word: 'dreamy' })
+  assert.equal(added.ok, true)
+  assert.equal(added.word.senses, undefined, 'a word with no cached gloss gains none')
+
+  const file = await stored(home)
+  const dream = file.words.find((entry) => entry.id === 'dream')
+  assert.equal(dream.folderId, 'f1')
+  assert.equal(dream.note, 'the panel wrote this', 'an unknown field survives a save')
+  assert.deepEqual(file.folders, [{ id: 'f1', name: 'Reading', kind: 'word', createdAt: 1 }],
+    'a section this tool does not write survives too')
+  assert.ok(file.words.some((entry) => entry.id === 'dreamy'))
+})
+
+test('a dialogue is added, listed, renamed and deleted', async () => {
+  const home = await scratch()
+  const text = 'A: The kettle is on.\nB: Then we wait.'
+
+  const added = await run({ action: 'add_dialogue', text, title: 'Kettle' })
+  assert.equal(added.ok, true)
+  assert.equal(added.created, true)
+  const id = added.dialogue.id
+  assert.match(id, /^d[0-9a-z]+$/, 'the id is the panel\'s shape')
+  assert.equal(added.dialogue.mode, 'article')
+  assert.equal(added.dialogue.index, 0)
+
+  const listed = await run({ action: 'list_dialogues' })
+  assert.equal(listed.total, 1)
+  assert.deepEqual(listed.dialogues.map((entry) => entry.id), [id])
+  assert.equal(listed.dialogues[0].title, 'Kettle')
+  assert.equal(listed.dialogues[0].sentences, 2)
+  assert.equal(listed.dialogues[0].index, 0)
+
+  const renamed = await run({ action: 'rename_dialogue', id, title: 'Kettle at dusk' })
+  assert.equal(renamed.ok, true)
+  assert.equal(renamed.dialogue.title, 'Kettle at dusk')
+  assert.equal((await run({ action: 'list_dialogues' })).dialogues[0].title, 'Kettle at dusk')
+
+  const deleted = await run({ action: 'delete_dialogue', id })
+  assert.equal(deleted.ok, true)
+  assert.equal(deleted.removed, true)
+  assert.deepEqual((await run({ action: 'list_dialogues' })).dialogues, [])
+
+  const file = await stored(home)
+  assert.deepEqual(file.items, [], 'the dialogue left the library')
+  assert.deepEqual(file.removed.map((entry) => `${entry.kind}:${entry.id}`), [`item:${id}`])
+})
+
+test('a dialogue with no title is named from its first turn', async () => {
+  await scratch()
+  const added = await run({ action: 'add_dialogue', text: 'A: Hi there.\nB: Hello.' })
+  assert.equal(added.ok, true)
+  assert.equal(added.dialogue.title, 'Hi there.', 'the speaker label is not the title')
+})
+
+test('the dictionary settings written by the tool read back unchanged', async () => {
+  const home = await scratch()
+
+  const before = await run({ action: 'get_settings' })
+  assert.deepEqual(before.settings.dictionary, { show: 'both', chinese: 'iciba', english: 'wordnet' })
+  assert.equal(before.stored, false, 'a fresh host holds no settings')
+
+  const set = await run({ action: 'set_dictionary', show: 'zh', chinese: 'model' })
+  assert.equal(set.ok, true)
+  const after = await run({ action: 'get_settings' })
+  assert.deepEqual(after.settings.dictionary, { show: 'zh', chinese: 'model', english: 'wordnet' })
+  assert.equal(after.stored, true)
+  assert.ok(after.updatedAt > 0)
+
+  // The next call keeps what the first one chose.
+  await run({ action: 'set_dictionary', show: 'en', english: 'collins' })
+  assert.deepEqual((await run({ action: 'get_settings' })).settings.dictionary,
+    { show: 'en', chinese: 'model', english: 'collins' })
+  assert.equal((await stored(home)).settings.dictionary.chinese, 'model')
+
+  // A value the panel does not offer changes nothing.
+  const refused = await run({ action: 'set_dictionary', show: 'sideways' })
+  assert.equal(refused.ok, false)
+  assert.match(refused.error, /show to be one of/)
+  assert.equal((await stored(home)).settings.dictionary.show, 'en')
+})
+
+test('an unknown action comes back as an error, not a crash', async () => {
+  await scratch()
+  const refused = await run({ action: 'format_disk' })
+  assert.equal(refused.ok, false)
+  assert.match(refused.error, /unknown action/)
+  assert.deepEqual(refused.actions, ACTIONS)
+
+  const missing = await run({})
+  assert.equal(missing.ok, false)
+  assert.match(missing.error, /unknown action/)
+})
+
+test('an action that cannot run answers with a reason and writes nothing', async () => {
+  const home = await scratch()
+  const refused = await run({ action: 'add_dialogue', text: '   ' })
+  assert.equal(refused.ok, false)
+  assert.match(refused.error, /English text/)
+  await assert.rejects(stored(home), 'no library file was created')
+})
+test('a panel save and a tool call keep one library', async () => {
+  const home = await scratch()
+  await run({ action: 'set_dictionary', show: 'zh' })
+  await run({ action: 'add_word', word: 'lantern' })
+
+  // The panel posts the library it holds; it carries no settings and no word of
+  // the tool's, because it has not loaded them since the tool wrote them.
+  const routes = new Map()
+  const context = {
+    effect: (fn) => { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {} },
+    webServer: { register: (route) => { routes.set(route.path, route); return () => {} } },
+  }
+  apply(context, {})
+  const route = routes.get('/api-dsh-english-reader/store')
+  assert.ok(route !== undefined, 'the store route is registered')
+  const answered = { status: 200 }
+  await route.handler({
+    method: 'POST',
+    async *[Symbol.asyncIterator]() {
+      yield Buffer.from(JSON.stringify({
+        state: { savedAt: Date.now(), items: [{ id: 'panel-1', title: 'From the panel', updatedAt: Date.now() }], words: [] },
+      }))
+    },
+  }, {
+    writeHead(status) { answered.status = status; return this },
+    end() { return this },
+  })
+  assert.equal(answered.status, 200)
+
+  // Nothing either side wrote was erased by the other.
+  assert.deepEqual((await run({ action: 'list_words' })).words.map((entry) => entry.id), ['lantern'])
+  assert.deepEqual((await run({ action: 'list_dialogues' })).dialogues.map((entry) => entry.id), ['panel-1'])
+  assert.equal((await run({ action: 'get_settings' })).settings.dictionary.show, 'zh')
+  assert.equal((await stored(home)).settings.dictionary.show, 'zh', 'the panel save kept the settings')
+})

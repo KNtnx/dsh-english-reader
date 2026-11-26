@@ -69,7 +69,17 @@ export function createHost(options = {}) {
       })
     }
     if (path === '/api-dsh-english-reader/translate/models') return json({ models: [] })
-    if (path === '/api-dsh-english-reader/dict/key') return json({ hasKey: false, masked: '' })
+    // The host holds the Collins key, never the browser: POST stores it, GET only
+    // reports whether one is there. A test that saves a key needs the write to
+    // land, so the flag is kept here instead of being hard-coded false.
+    if (path === '/api-dsh-english-reader/dict/key') {
+      if (method === 'POST') {
+        const body = JSON.parse(String(init.body ?? '{}'))
+        host.collinsKey = typeof body?.key === 'string' ? body.key.trim() : ''
+        return json({ hasKey: host.collinsKey !== '' })
+      }
+      return json({ hasKey: host.collinsKey !== '', masked: host.collinsKey === '' ? '' : '••••' })
+    }
     if (path === '/api-dsh-english-reader/store') {
       if (method === 'GET') return json({ ok: true, state: host.store })
       host.store = JSON.parse(String(init.body ?? '{}'))?.state ?? null
@@ -89,6 +99,12 @@ export function createHost(options = {}) {
       })
     }
     if (path === '/api-dsh-english-reader/dict/ai') return json({ ok: false, error: 'no model in tests' })
+    // A local folder added through the dialog is checked by the host first.
+    // Only a test that asks for a verdict gets one; every other test keeps the
+    // 404 it saw before this route existed.
+    if (path === '/api-dsh-english-reader/tts/validate' && method === 'POST' && options.validate !== undefined) {
+      return json(options.validate)
+    }
     if (path === '/api-dsh-english-reader/translate') {
       const body = JSON.parse(String(init.body ?? '{}'))
       const texts = Array.isArray(body.texts) ? body.texts : []
@@ -106,7 +122,7 @@ export function createHost(options = {}) {
     return json({ ok: false, error: `no mock for ${method} ${path}` }, { status: 404 })
   }
 
-  const host = { fetch, calls, json, store: options.store ?? null }
+  const host = { fetch, calls, json, store: options.store ?? null, collinsKey: options.collinsKey ?? '' }
   return host
 }
 
@@ -139,6 +155,9 @@ export const FIXTURE_DICT = {
 
 /** Mount the panel and hand back the queries a test needs. */
 export async function launchPanel(options = {}) {
+  // The directory picker is a host capability, not a route: a test that presses
+  // "Choose…" passes one in, every other test keeps the dismissed picker.
+  const pickDirectory = options.pickDirectory ?? (async () => null)
   const host = createHost({ dict: FIXTURE_DICT, ...(options.host ?? {}) })
   const state = options.state ?? FIXTURE_STATE
   window.localStorage.clear()
@@ -166,14 +185,14 @@ export async function launchPanel(options = {}) {
     },
     sidebarRightTabs: { register: () => () => {} },
     sidebarRight: { openTab: () => {} },
-    uiWorkspace: { pickDirectory: async () => null },
+    uiWorkspace: { pickDirectory },
   }
   panelModule.apply(context)
 
   const entry = registered.get('sidebar.right.pane.tab:dsh-english-reader')
   if (entry === undefined) throw new Error('the panel never registered sidebar.right.pane.tab')
 
-  const props = { ...(entry.descriptor.inject?.() ?? {}), pickDirectory: async () => null }
+  const props = { ...(entry.descriptor.inject?.() ?? {}), pickDirectory }
   const container = document.createElement('div')
   document.body.append(container)
   const root = createRoot(container)

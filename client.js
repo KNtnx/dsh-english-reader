@@ -65,6 +65,8 @@ window.__ModuleLoader__.load({
     const TOMBSTONE_LIMIT = 500
     /** How many dialogues the library keeps. */
     const LIBRARY_LIMIT = 60
+    /** How many folders each of the two lists keeps. */
+    const FOLDER_LIMIT = 200
 
     const EDGE_VOICES = [
       { id: 'en-US-AriaNeural', label: 'Aria · US ♀' },
@@ -322,6 +324,16 @@ window.__ModuleLoader__.load({
         'library.empty': 'Nothing here yet. Paste your first dialogue and it will be kept.',
         'library.count': '{n} saved',
         'library.position': 'sentence {n} of {m}',
+        'folders.label': 'Folders',
+        'folders.all': 'All',
+        'folders.none': 'Uncategorized',
+        'folders.new': 'New folder',
+        'folders.namePrompt': 'Folder name',
+        'folders.rename': 'Rename folder',
+        'folders.delete': 'Delete folder',
+        'folders.move': 'Move to folder',
+        'folders.emptyDialogue': 'No dialogue in this folder yet.',
+        'folders.emptyWord': 'No word in this folder yet.',
         'error.notInstalled': 'The local model is not downloaded yet',
         'error.preparing': 'The local model is still being prepared — try again in a moment',
         'error.network': 'Could not reach the speech service',
@@ -554,6 +566,16 @@ window.__ModuleLoader__.load({
         'library.empty': '还没有对话。粘贴第一段就会自动保存。',
         'library.count': '已保存 {n} 个',
         'library.position': '第 {n} 句 / 共 {m} 句',
+        'folders.label': '收藏夹',
+        'folders.all': '全部',
+        'folders.none': '未分类',
+        'folders.new': '新建收藏夹',
+        'folders.namePrompt': '收藏夹名称',
+        'folders.rename': '重命名收藏夹',
+        'folders.delete': '删除收藏夹',
+        'folders.move': '移到收藏夹',
+        'folders.emptyDialogue': '这个收藏夹里还没有对话。',
+        'folders.emptyWord': '这个收藏夹里还没有单词。',
         'error.notInstalled': '本地模型还没下载',
         'error.preparing': '本地模型还在准备中，稍等一下再试',
         'error.network': '连不上语音服务',
@@ -840,9 +862,46 @@ window.__ModuleLoader__.load({
         props.open ? h('div', { className: 'er-sect-body' }, props.children) : null)
     }
 
+    /** One labelled control: the settings card and the add-source dialog share it. */
+    const field = (label, control) => h('label', { className: 'er-field' },
+      h('span', { className: 'er-field-label' }, label), control)
+
     /** A stable id without depending on crypto availability. */
     function makeId() {
       return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`
+    }
+
+    /**
+     * The folder one entry belongs to, or '' when it is unclassified.
+     *
+     * A reference to a folder that has been deleted — or to one of another
+     * kind — reads as unclassified. The stored `folderId` is left untouched, so
+     * deleting a folder never destroys the filing of the entries inside it.
+     */
+    function folderOf(folders, value, kind) {
+      if (typeof value !== 'string' || value === '') return ''
+      return folders.some((folder) => folder.id === value && folder.kind === kind) ? value : ''
+    }
+
+    /** Only a stored folder record with a usable shape is loaded back. */
+    function isFolderRecord(value) {
+      return value !== null && typeof value === 'object'
+        && typeof value.id === 'string' && value.id !== ''
+        && typeof value.name === 'string' && value.name.trim() !== ''
+        && (value.kind === 'dialogue' || value.kind === 'word')
+    }
+
+    /** The folders a stored state carries; a state written before them has none. */
+    function readFolders(value) {
+      return (Array.isArray(value) ? value : [])
+        .filter(isFolderRecord)
+        .map((folder) => ({
+          id: folder.id,
+          name: folder.name,
+          kind: folder.kind,
+          createdAt: Number.isFinite(folder.createdAt) ? folder.createdAt : 0,
+        }))
+        .slice(-FOLDER_LIMIT)
     }
 
     /** Read the remembered panel state, migrating the first release's layout. */
@@ -911,11 +970,17 @@ function mergeStates(local, remote) {
   }
   const words = keep(base.words, remote.words, 'word', 'addedAt')
     .sort((left, right) => Number(right.addedAt ?? 0) - Number(left.addedAt ?? 0))
+  // Folders travel the same way. Their creation time is the stamp the union
+  // compares, so the same folder arriving from two panels stays a single one.
+  // Entries that point at a folder this merge dropped still read as
+  // unclassified, without losing the reference.
+  const folders = readFolders(keep(base.folders, remote.folders, 'folder', 'createdAt'))
+    .sort((left, right) => left.createdAt - right.createdAt)
   const tombstones = [...gone.entries()].map(([key, at]) => {
     const split = key.indexOf(':')
     return { kind: key.slice(0, split), id: key.slice(split + 1), at }
   }).sort((left, right) => left.at - right.at).slice(-TOMBSTONE_LIMIT)
-  return { ...base, items: keep(base.items, remote.items, 'item', 'updatedAt'), words, removed: tombstones }
+  return { ...base, items: keep(base.items, remote.items, 'item', 'updatedAt'), words, folders, removed: tombstones }
 }
 
 /** Format a byte count for the model card. */
@@ -977,6 +1042,8 @@ function mergeStates(local, remote) {
         'M3 14h3a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2H4a1 1 0 0 1-1-1v-7a9 9 0 0 1 18 0v7a1 1 0 0 1-1 1h-2a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3',
       ],
       library: 'M4 5h3v14H4zm5 0h3v14H9zm5 0h2.6l3 14-2.6.5z',
+      // A folder with a tab: the button that files a row under one.
+      folder: 'M4 5h5.2l1.8 2H20a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z',
       plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
       close: 'M6.4 5 12 10.6 17.6 5 19 6.4 13.4 12 19 17.6 17.6 19 12 13.4 6.4 19 5 17.6 10.6 12 5 6.4z',
       translate: 'M3 5h7v1.7H3zm0 3.7h5.2v1.7H3zm0 3.7h7V14H3zm10.4-7.4h2.2l3.4 9h-2.1l-.7-2h-3.4l-.7 2h-2.1zM14.5 7.1 13.2 11h2.6z',
@@ -1043,13 +1110,103 @@ function mergeStates(local, remote) {
       }
     }
 
+  /**
+   * The folder bar the library and the saved words share: one chip per folder of
+   * that list, All and Unclassified at the ends, and the create field.
+   *
+   * `props` is one list's view of the folders (`dialogueFolders` or
+   * `wordFolders`), so the two pages render exactly this control instead of
+   * keeping two copies of it.
+   */
+  function renderFolderBar(props) {
+    const { adding, confirm, create, draft, drop, filter, kind, list, rename, renaming, setAdding, setConfirm, setDraft, setFilter, setRenaming, t } = props
+    const mine = list.filter((folder) => folder.kind === kind)
+    const selected = mine.find((folder) => folder.id === filter) ?? null
+    const chip = (key, label, on) => h('button', {
+      key: `folder:${key}`,
+      type: 'button',
+      className: `er-folder-chip${on ? ' er-folder-chip-on' : ''}`,
+      'data-folder': key,
+      'aria-pressed': on ? 'true' : 'false',
+      onClick: () => setFilter(key),
+    }, label)
+    return h('div', { className: 'er-folders' },
+      h('div', { className: 'er-folder-row', role: 'group', 'aria-label': t('folders.label') },
+        chip('all', t('folders.all'), filter === 'all'),
+        mine.map((folder) => (renaming === folder.id
+          ? h('input', {
+            key: `rename:${folder.id}`,
+            className: 'er-input er-folder-input',
+            value: draft, autoFocus: true, spellCheck: false,
+            'aria-label': t('folders.rename'),
+            onChange: (event) => setDraft(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter') { event.preventDefault(); rename(folder.id, draft) }
+              if (event.key === 'Escape') { event.preventDefault(); setRenaming('') }
+            },
+            onBlur: () => rename(folder.id, draft),
+          })
+          : chip(folder.id, folder.name, filter === folder.id))),
+        chip('', t('folders.none'), filter === ''),
+        adding === kind
+          ? h('input', {
+            key: 'new',
+            className: 'er-input er-folder-input',
+            value: draft, autoFocus: true, spellCheck: false,
+            placeholder: t('folders.namePrompt'), 'aria-label': t('folders.new'),
+            onChange: (event) => setDraft(event.target.value),
+            onKeyDown: (event) => {
+              if (event.key === 'Enter') { event.preventDefault(); create(kind, draft) }
+              if (event.key === 'Escape') { event.preventDefault(); setAdding('') }
+            },
+          })
+          : h('button', {
+            type: 'button', className: 'er-cta er-folder-new',
+            onClick: () => { setDraft(''); setRenaming(''); setAdding(kind) },
+          }, t('folders.new'))),
+      // Rename and delete belong to the folder on screen: a bar of chips with a
+      // pencil on every one of them would be noise.
+      selected === null
+        ? null
+        : h('div', { className: 'er-folder-tools' },
+          h('button', {
+            type: 'button', className: 'er-entry-act', title: t('folders.rename'), 'aria-label': t('folders.rename'),
+            onClick: () => { setDraft(selected.name); setAdding(''); setConfirm(''); setRenaming(selected.id) },
+          }, glyph(ICON.rename, 12)),
+          h('button', {
+            type: 'button',
+            className: `er-entry-del${confirm === selected.id ? ' er-entry-del-on' : ''}`,
+            title: t('folders.delete'), 'aria-label': t('folders.delete'),
+            onClick: () => { if (confirm === selected.id) drop(selected.id); else setConfirm(selected.id) },
+          }, confirm === selected.id ? t('deleteConfirm') : glyph(ICON.close, 13))))
+  }
+
+  /**
+   * The picker one row opens: which folder this dialogue or word is filed in.
+   * Both lists render this, so an entry is moved the same way everywhere.
+   */
+  function renderFolderPicker(folders, kind, entry) {
+    return h('div', { className: 'er-move' },
+      h('select', {
+        className: 'er-plain-select er-move-select',
+        value: folders.idOf(entry.folderId),
+        'aria-label': folders.t('folders.move'),
+        onChange: (event) => folders.move(kind, entry.id, event.target.value),
+      },
+        h('option', { value: '' }, folders.t('folders.none')),
+        folders.list.filter((folder) => folder.kind === kind)
+          .map((folder) => h('option', { key: folder.id, value: folder.id }, folder.name))))
+  }
+
   /** The library view, split out so the panel body stays readable. */
   function renderLibraryPage(ui) {
-    const { activeId, confirmDelete, editItem, index, items, nameDraft, newDialogue, onKeyDown, openItem, pageBox, removeItem, renameItem, renamingItem, setConfirmDelete, setNameDraft, setRenamingItem, t, togglePin } = ui
+    const { activeId, confirmDelete, dialogueFolders, editItem, index, items, nameDraft, newDialogue, onKeyDown, openItem, pageBox, removeItem, renameItem, renamingItem, setConfirmDelete, setNameDraft, setRenamingItem, t, togglePin } = ui
+    const shown = items.filter((item) => dialogueFolders.shows(item.folderId))
   return h('div', { className: 'er-scroll er-index-wrap', style: pageBox },
-        items.length === 0
-          ? h('p', { className: 'er-empty' }, t('library.empty'))
-          : h('ul', { className: 'er-index' }, [...items]
+        renderFolderBar(dialogueFolders),
+        shown.length === 0
+          ? h('p', { className: 'er-empty' }, items.length === 0 ? t('library.empty') : t('folders.emptyDialogue'))
+          : h('ul', { className: 'er-index' }, [...shown]
             .sort((left, right) => (Number(right.pinned === true) - Number(left.pinned === true))
               || (right.updatedAt ?? 0) - (left.updatedAt ?? 0))
             .map((item) => {
@@ -1093,7 +1250,14 @@ function mergeStates(local, remote) {
                 className: `er-entry-del${confirmDelete === item.id ? ' er-entry-del-on' : ''}`,
                 title: t('delete'), 'aria-label': t('delete'),
                 onClick: () => { if (confirmDelete === item.id) removeItem(item.id); else setConfirmDelete(item.id) },
-              }, confirmDelete === item.id ? t('deleteConfirm') : glyph(ICON.close, 13)))
+              }, confirmDelete === item.id ? t('deleteConfirm') : glyph(ICON.close, 13)),
+              h('button', {
+                type: 'button',
+                className: `er-entry-act${dialogueFolders.moving === item.id ? ' er-entry-act-on' : ''}`,
+                title: t('folders.move'), 'aria-label': t('folders.move'),
+                onClick: () => dialogueFolders.setMoving(dialogueFolders.moving === item.id ? '' : item.id),
+              }, glyph(ICON.folder, 12)),
+              dialogueFolders.moving === item.id ? renderFolderPicker(dialogueFolders, 'dialogue', item) : null)
           })),
         h('div', { className: 'er-index-foot' },
           h('button', { type: 'button', className: 'er-cta', onClick: newDialogue }, t('library.new'))))
@@ -1102,8 +1266,12 @@ function mergeStates(local, remote) {
 
   /** The wordsPage view, split out so the panel body stays readable. */
   function renderWordsPage(ui) {
-    const { aiEntries, closeWord, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dropWord, entryKey, index, openEntry, openLoading, openPinnedWord, openWordId, pageBox, sayingKey, setWordFilter, speak, t, toggleWord, visibleWords, wordFilter, words } = ui
+    const { aiEntries, closeWord, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dropWord, entryKey, index, openEntry, openLoading, openPinnedWord, openWordId, pageBox, sayingKey, setWordFilter, speak, t, toggleWord, visibleWords, wordFilter, wordFolders, words } = ui
+    // What the folder bar leaves, before the text filter: an empty folder is a
+    // different message from a filter nothing matches.
+    const inFolder = words.filter((item) => wordFolders.shows(item.folderId))
   return h('div', { className: 'er-scroll er-words', style: pageBox },
+        renderFolderBar(wordFolders),
         h('div', { className: 'er-words-bar' },
           h('input', {
             className: 'er-input', value: wordFilter, spellCheck: false,
@@ -1112,9 +1280,11 @@ function mergeStates(local, remote) {
           })),
         words.length === 0
           ? h('p', { className: 'er-empty' }, t('words.empty'))
-          : visibleWords.length === 0
-            ? h('p', { className: 'er-empty' }, t('words.none'))
-            : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
+          : inFolder.length === 0
+            ? h('p', { className: 'er-empty' }, t('folders.emptyWord'))
+            : visibleWords.length === 0
+              ? h('p', { className: 'er-empty' }, t('words.none'))
+              : h('ul', { className: 'er-index' }, visibleWords.map((item) => {
               const open = openWordId === item.id
               const resolved = open && openEntry !== null && String(openEntry.word).toLowerCase() === String(item.word).toLowerCase()
                 ? openEntry : null
@@ -1150,9 +1320,16 @@ function mergeStates(local, remote) {
                     onClick: () => { closeWord(); openPinnedWord(item.word) },
                   }, glyphLine(ICON.book, 14)),
                   h('button', {
+                    type: 'button',
+                    className: `er-entry-act${wordFolders.moving === item.id ? ' er-entry-act-on' : ''}`,
+                    title: t('folders.move'), 'aria-label': t('folders.move'),
+                    onClick: () => wordFolders.setMoving(wordFolders.moving === item.id ? '' : item.id),
+                  }, glyph(ICON.folder, 12)),
+                  h('button', {
                     type: 'button', className: 'er-entry-del', title: t('words.remove'), 'aria-label': t('words.remove'),
                     onClick: () => dropWord(item.id),
                   }, glyph(ICON.close, 13))),
+                wordFolders.moving === item.id ? renderFolderPicker(wordFolders, 'word', item) : null,
                 open
                   ? h('div', { className: 'er-wrow-body' },
                     openLoading
@@ -1425,9 +1602,6 @@ function mergeStates(local, remote) {
               onClick: installModel,
             }, model?.phase === 'error' ? t('local.retry') : t('local.download')))
 
-      const field = (label, control) => h('label', { className: 'er-field' },
-        h('span', { className: 'er-field-label' }, label), control)
-
       const factRow = (label, value) => h('div', { className: 'er-fact' },
         h('span', { className: 'er-fact-label' }, label),
         h('span', { className: 'er-fact-value' }, value))
@@ -1471,8 +1645,10 @@ function mergeStates(local, remote) {
               onClick: (event) => event.stopPropagation(),
               onChange: (event) => setNameDraft(event.target.value),
               onKeyDown: (event) => {
-                if (event.key === 'Enter') { event.preventDefault(); void renameSource(entry.id, nameDraft) }
-                if (event.key === 'Escape') { event.preventDefault(); setRenamingSource('') }
+                if (event.key === 'Enter') { event.preventDefault(); event.stopPropagation(); void renameSource(entry.id, nameDraft) }
+                // Escape belongs to this field: the root also closes the card on
+                // Escape, and cancelling a rename must not dismiss the settings.
+                if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); setRenamingSource('') }
               },
               onBlur: () => { void renameSource(entry.id, nameDraft) },
             })
@@ -1486,6 +1662,11 @@ function mergeStates(local, remote) {
           type: 'button', className: 'er-source-act', title: t('editSource'), 'aria-label': t('editSource'),
           onClick: () => openSourceEditor(entry),
         }, glyph(ICON.settings, 12)),
+        // The inline rename field below only appears once something asks for it.
+        entry.kind === 'edge' || entry.bundled === true ? null : h('button', {
+          type: 'button', className: 'er-source-act', title: t('rename'), 'aria-label': t('rename'),
+          onClick: () => { setNameDraft(entry.name); setRenamingSource(entry.id) },
+        }, glyph(ICON.rename, 12)),
         entry.kind === 'edge' || entry.bundled === true ? null : h('button', {
           type: 'button', className: 'er-source-del', title: t('delete'), 'aria-label': t('delete'),
           onClick: () => removeSource(entry.id),
@@ -2163,6 +2344,12 @@ function mergeStates(local, remote) {
      */
     const [removed, setRemoved] = useState(() => (Array.isArray(initial.removed) ? initial.removed : []))
 
+    /**
+     * The folders the two lists are filed under. A state written before folders
+     * existed has none, and its entries simply read as unclassified.
+     */
+    const [folders, setFolders] = useState(() => readFolders(initial.folders))
+
     /** Model-written entries, keyed by word, so a kind switch never pays twice. */
     const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
 
@@ -2192,12 +2379,14 @@ function mergeStates(local, remote) {
     const persist = useCallback((override) => {
       const list = override?.items ?? items
       const gone = override?.removed ?? removed
+      const wordList = override?.words ?? words
+      const folderList = override?.folders ?? folders
       const id = override?.activeId === undefined ? activeId : override.activeId
       const at = override?.index === undefined ? index : override.index
       try {
         window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
           version: 3, activeId: id, sources: extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll, columnWidth, fontScale, customPct, customPx,
-          showTranslation, translateSource, translateModel, autoNext, words, removed: gone, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
+          showTranslation, translateSource, translateModel, autoNext, words: wordList, folders: folderList, removed: gone, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB,
           items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
         }))
       } catch { /* storage full or blocked: the panel still works */ }
@@ -2206,10 +2395,11 @@ function mergeStates(local, remote) {
       sendStore({
         savedAt: Date.now(),
         items: list.map((item) => (item.id === id ? { ...item, index: at } : item)),
-        words,
+        words: wordList,
+        folders: folderList,
         removed: gone,
       })
-    }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, removed, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
+    }, [items, activeId, index, extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll, showTranslation, translateSource, translateModel, columnWidth, fontScale, customPct, customPx, words, folders, removed, dictShow, dictCn, dictEn, aiEntries, dictModelCn, dictModelEn, sections, bundledA, bundledB, sendStore])
 
     // Remember the library, the position, and the settings.
     useEffect(() => {
@@ -2238,7 +2428,7 @@ function mergeStates(local, remote) {
 
     return {
       items, setItems, activeId, setActiveId, index, setIndex,
-      words, setWords, removed, setRemoved, aiEntries, setAiEntries,
+      words, setWords, folders, setFolders, removed, setRemoved, aiEntries, setAiEntries,
       sendStore, persist, saveRef,
     }
   }
@@ -2652,6 +2842,20 @@ function mergeStates(local, remote) {
       const [renamingItem, setRenamingItem] = useState('')
       const [wordFilter, setWordFilter] = useState('')
       const [openWordId, setOpenWordId] = useState('')
+      /**
+       * The folder each list is filtered by: 'all', '' for unclassified, or a
+       * folder id. One object, because switching pages must not lose the other
+       * page's choice.
+       */
+      const [folderFilter, setFolderFilter] = useState({ dialogue: 'all', word: 'all' })
+      /** Which list is getting a new folder, and what is being typed into it. */
+      const [folderAdding, setFolderAdding] = useState('')
+      const [folderRenaming, setFolderRenaming] = useState('')
+      const [folderDraft, setFolderDraft] = useState('')
+      /** The folder whose delete is waiting for a second click. */
+      const [confirmFolder, setConfirmFolder] = useState('')
+      /** The dialogue or word whose folder picker is open. */
+      const [movingId, setMovingId] = useState('')
       /** The saved word opened in the list, and whether its entry is still loading. */
       const [openEntry, setOpenEntry] = useState(null)
       const [openLoading, setOpenLoading] = useState(false)
@@ -2721,7 +2925,7 @@ function mergeStates(local, remote) {
 
       const {
         items, setItems, activeId, setActiveId, index, setIndex, words, setWords,
-        removed, setRemoved, aiEntries, setAiEntries, persist, saveRef,
+        folders, setFolders, removed, setRemoved, aiEntries, setAiEntries, persist, saveRef,
       } = useSharedStore({
         initial, initialItems, initialActive,
         extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll,
@@ -3830,6 +4034,9 @@ function mergeStates(local, remote) {
 
       const showing = showTranslation && translation !== null
       const visibleWords = words.filter((item) => {
+        // The folder bar narrows the list first; the text filter applies to
+        // what is left, so the two never undo each other.
+        if (folderFilter.word !== 'all' && folderOf(folders, item.folderId, 'word') !== folderFilter.word) return false
         const needle = wordFilter.trim().toLowerCase()
         if (needle === '') return true
         const zh = sensesOf(item.translation).map((sense) => sense.def).join(' ')
@@ -3885,6 +4092,92 @@ function mergeStates(local, remote) {
         setRemoved((current) => [...current, { kind: 'word', id, at: Date.now() }].slice(-TOMBSTONE_LIMIT))
       }, [])
 
+      /** Create a folder for one of the two lists: dialogues or words. */
+      const createFolder = useCallback((kind, value) => {
+        const name = String(value ?? '').trim()
+        setFolderAdding('')
+        setFolderDraft('')
+        if (name === '') return
+        const next = [...folders, { id: makeId(), name, kind, createdAt: Date.now() }].slice(-FOLDER_LIMIT)
+        setFolders(next)
+        persist({ folders: next })
+      }, [folders, persist])
+
+      /** Rename a folder. Its entries point at it by id, so they follow the name. */
+      const renameFolder = useCallback((id, value) => {
+        const name = String(value ?? '').trim()
+        setFolderRenaming('')
+        setFolderDraft('')
+        if (id === '' || name === '') return
+        const next = folders.map((folder) => (folder.id === id ? { ...folder, name } : folder))
+        setFolders(next)
+        persist({ folders: next })
+      }, [folders, persist])
+
+      /**
+       * Delete a folder. The entries inside it are left alone: they point at an
+       * id with no folder, read as unclassified, and come back if a folder with
+       * that id ever returns. Deleting a folder must never delete its contents.
+       */
+      const deleteFolder = useCallback((id) => {
+        setConfirmFolder('')
+        if (id === '') return
+        setRemoved((current) => [...current, { kind: 'folder', id, at: Date.now() }].slice(-TOMBSTONE_LIMIT))
+        const next = folders.filter((folder) => folder.id !== id)
+        setFolders(next)
+        // The bar may have been showing the folder that just went away; fall
+        // back to everything rather than to an empty page with no chip to undo.
+        setFolderFilter((current) => ({
+          dialogue: current.dialogue === id ? 'all' : current.dialogue,
+          word: current.word === id ? 'all' : current.word,
+        }))
+        persist({ folders: next })
+      }, [folders, persist])
+
+      /** File one dialogue or word under a folder, or back to unclassified. */
+      const moveToFolder = useCallback((kind, id, value) => {
+        const folderId = typeof value === 'string' ? value : ''
+        setMovingId('')
+        if (kind === 'word') {
+          const next = words.map((entry) => (entry.id === id ? { ...entry, folderId } : entry))
+          setWords(next)
+          persist({ words: next })
+          return
+        }
+        const next = items.map((entry) => (entry.id === id ? { ...entry, folderId } : entry))
+        setItems(next)
+        persist({ items: next })
+      }, [items, words, persist])
+
+      /** One list's view of the shared folder bar: its kind, filter and controls. */
+      const foldersFor = (kind, filter, setFilter) => ({
+        list: folders,
+        kind,
+        filter,
+        setFilter,
+        t,
+        adding: folderAdding,
+        setAdding: setFolderAdding,
+        draft: folderDraft,
+        setDraft: setFolderDraft,
+        renaming: folderRenaming,
+        setRenaming: setFolderRenaming,
+        confirm: confirmFolder,
+        setConfirm: setConfirmFolder,
+        moving: movingId,
+        setMoving: setMovingId,
+        create: createFolder,
+        rename: renameFolder,
+        drop: deleteFolder,
+        move: moveToFolder,
+        /** The folder this entry can point at, or '' when unclassified. */
+        idOf: (value) => folderOf(folders, value, kind),
+        /** Whether one entry belongs to the folder the bar is showing. */
+        shows: (value) => filter === 'all' || folderOf(folders, value, kind) === filter,
+      })
+      const dialogueFolders = foldersFor('dialogue', folderFilter.dialogue, (value) => setFolderFilter((current) => ({ ...current, dialogue: value })))
+      const wordFolders = foldersFor('word', folderFilter.word, (value) => setFolderFilter((current) => ({ ...current, word: value })))
+
       const toggleWord = (item) => {
         if (openWordId === item.id) { closeWord(); return }
         setOpenWordId(item.id)
@@ -3923,7 +4216,7 @@ function mergeStates(local, remote) {
         window.addEventListener('mouseup', end)
       }
 
-      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef, autoScroll, setAutoScroll }
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dialogueFolders, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, wordFolders, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef, autoScroll, setAutoScroll }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)
@@ -4093,7 +4386,7 @@ function mergeStates(local, remote) {
 .er-index .er-entry-title{font-size:calc((var(--dsh-content-font-size-secondary,13px) + 1px) * var(--er-scale,1))}
 .er-index .er-entry-meta{font-size:calc((var(--dsh-content-font-size-secondary,13px) - 2px) * var(--er-scale,1))}
 .er-index{list-style:none;margin:0;padding:0}
-.er-entry{display:flex;align-items:stretch;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));border-left:2px solid transparent}
+.er-entry{display:flex;flex-wrap:wrap;align-items:stretch;border-bottom:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));border-left:2px solid transparent}
 .er-entry-on{border-left-color:var(--dsw-alias-brand-primary,#4b7bec)}
 .er-entry-open{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;padding:9px 4px 9px 10px;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .er-entry-open:hover{background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
@@ -4108,6 +4401,19 @@ function mergeStates(local, remote) {
 .er-entry-del{flex:0 0 auto;min-width:28px;padding:0 8px;border:0;background:transparent;color:var(--dsw-alias-label-secondary,#888);font:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);cursor:pointer}
 .er-entry-del:hover,.er-entry-del-on{color:var(--dsw-alias-state-error-primary,#c0392b);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .er-index-foot{padding:10px 10px 14px}
+
+/* ---- folders ---------------------------------------------------------- */
+.er-folders{display:flex;flex-direction:column;gap:4px;padding:6px 10px 5px}
+.er-folder-row{display:flex;flex-wrap:wrap;align-items:center;gap:4px}
+.er-folder-chip{flex:0 0 auto;max-width:100%;height:22px;padding:0 8px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary,#666);font:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
+.er-folder-chip:hover{color:var(--dsw-alias-label-primary,#111);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
+.er-folder-chip-on{color:var(--dsw-alias-brand-primary,#4b7bec);border-color:currentColor;background:color-mix(in srgb,var(--dsw-alias-brand-primary,#4b7bec) 10%,transparent)}
+.er-folder-input{width:auto;min-width:96px;max-width:180px;height:22px;padding:0 6px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px)}
+.er-folder-new{height:22px;padding:0 8px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px)}
+.er-folder-tools{display:flex;align-items:center;gap:2px}
+/* The picker takes its own line, so a row keeps its title width. */
+.er-move{display:flex;width:100%;align-items:center;gap:6px;padding:0 10px 7px 10px}
+.er-move-select{max-width:100%}
 
 /* ---- editor ----------------------------------------------------------- */
 .er-editor{flex:1;min-height:0;display:flex;flex-direction:column;gap:9px;padding:10px 12px 12px;overflow:auto}
