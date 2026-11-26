@@ -348,3 +348,35 @@ test('dragging the pinned dialog does not close it or eat the input', async () =
     await api.unmount()
   }
 })
+
+test('a word with punctuation is recognised as saved', async () => {
+  // Reported: "jealousy." was saved, the card still offered to save it, and the
+  // button said nothing when pressed. The row keeps the id without punctuation.
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    const clickWord = async (text) => {
+      const span = api.qa('.er-w').find((node) => node.textContent === text)
+      assert.ok(span !== undefined, `the word ${text} is rendered`)
+      span.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }))
+      await api.waitFor(() => api.q('.er-wordcard .er-add') !== null, { label: 'the save button' })
+      return api.q('.er-wordcard .er-add')
+    }
+
+    const before = await clickWord('it.')
+    assert.equal(before.textContent, 'Save word')
+    assert.equal(before.disabled, false)
+    await api.click(before)
+    await api.waitFor(() => api.q('.er-wordcard .er-add')?.textContent === 'Saved', { label: 'the saved state' })
+    assert.equal(api.q('.er-wordcard .er-add').disabled, true, 'pressing it again would do nothing')
+    assert.equal(api.q('.er-wordcard .er-add').getAttribute('aria-pressed'), 'true')
+
+    // Close the card and ask for the same word again: it must already read Saved.
+    await api.click(api.q('.er-wordcard .er-glyph[aria-label="Close"]'))
+    await api.settle()
+    const again = await clickWord('it.')
+    assert.equal(again.textContent, 'Saved', 'the card remembers the word is saved')
+    assert.equal(again.disabled, true)
+  } finally {
+    await api.unmount()
+  }
+})

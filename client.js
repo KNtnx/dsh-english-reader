@@ -28,6 +28,14 @@ window.__ModuleLoader__.load({
     const DICT_KEY = '/api-dsh-english-reader/dict/key'
     /** The library and the saved words, kept by the host so every session shares them. */
     const STORE_PATH = '/api-dsh-english-reader/store'
+
+    /**
+     * The id a saved word is stored under: lowercase, without punctuation, so
+     * "Jealousy." and "jealousy" are the same entry.
+     */
+    function wordId(word) {
+      return String(word ?? '').toLowerCase().replace(/[^a-z' -]/g, '').trim();
+    }
     const BOOT_TIMEOUT_MS = 2500
     const SPEECH_SOURCE_PATH = '/api-dsh-english-reader/tts/sources'
     /** A home-directory path reads better (and wraps less) as `~/…`. */
@@ -1878,10 +1886,17 @@ function mergeStates(local, remote) {
                       h('span', null, sense.def))))
                     : null,
                   h('div', { className: 'er-wordcard-foot' },
-                    cardState === 'ready' ? h('button', {
-                      type: 'button', className: 'er-add er-add-plain',
-                      onClick: () => saveWord({ ...cardEntry, word: cardEntry.word }),
-                    }, words.some((item) => item.id === String(cardEntry.word).toLowerCase()) ? t('dict.saved') : t('dict.save')) : null)))
+                    cardState === 'ready' ? (() => {
+                      // Same id rule as saveWord: "jealousy." is "jealousy".
+                      const saved = words.some((item) => item.id === wordId(cardEntry.word))
+                      return h('button', {
+                        type: 'button',
+                        className: `er-add er-add-plain${saved ? ' er-add-saved' : ''}`,
+                        disabled: saved,
+                        'aria-pressed': saved ? 'true' : 'false',
+                        onClick: () => saveWord({ ...cardEntry, word: cardEntry.word }),
+                      }, saved ? t('dict.saved') : t('dict.save'))
+                    })() : null)))
 
       // ------------------------------------------------------------------ body
   }
@@ -3577,7 +3592,7 @@ function mergeStates(local, remote) {
       /** Keep one entry in the word list, newest first, deduplicated. */
       const saveWord = useCallback((entry) => {
         if (entry === null) return;
-        const id = String(entry.word).toLowerCase().replace(/[^a-z' -]/g, '').trim();
+        const id = wordId(entry.word);
         if (id === '') return;
         // Only the word and the sentence it came from are kept: definitions come
         // from the dictionary or the cache, so switching source changes what the
@@ -3960,6 +3975,7 @@ function mergeStates(local, remote) {
 .er-sense{display:flex;flex-direction:column;gap:2px}
 .er-sense-line{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-primary,#111);line-height:1.45}
 .er-sense-pos{margin-right:5px;font-style:italic;color:var(--dsw-alias-label-secondary,#888)}
+.er-add-saved{opacity:.55}
 .er-say{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;margin-left:4px;padding:0;border:0;border-radius:var(--dsw-radius-xs,4px);background:transparent;color:var(--dsw-alias-label-secondary,#aaa);cursor:pointer;vertical-align:middle}
 .er-say:hover{color:var(--dsw-alias-brand-primary,#4b7bec);background:var(--dsw-alias-interactive-bg-hover,rgba(0,0,0,.05))}
 .er-say-on{color:var(--dsw-alias-brand-primary,#4b7bec)}
