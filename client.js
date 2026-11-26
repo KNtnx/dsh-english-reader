@@ -968,7 +968,24 @@ function mergeStates(local, remote) {
     }
     return [...out.values()]
   }
+  // Where a word lives is decided by the newest move, not by which copy of the
+  // entry arrived later: folderAt only changes when someone files it.
+  const placed = new Map()
+  for (const entry of [...(Array.isArray(base.words) ? base.words : []), ...(Array.isArray(remote.words) ? remote.words : [])]) {
+    const id = String(entry?.id ?? entry?.word ?? '')
+    if (id === '') continue
+    const at = Number(entry.folderAt ?? 0)
+    const held = placed.get(id)
+    if (held === undefined || at > held.at) placed.set(id, { at, folderId: String(entry.folderId ?? '') })
+  }
   const words = keep(base.words, remote.words, 'word', 'addedAt')
+    .map((entry) => {
+      const spot = placed.get(String(entry.id ?? entry.word ?? ''))
+      // An entry that was never filed keeps its shape: no folderId is invented.
+      if (spot === undefined) return entry
+      if (spot.folderId === '' && entry.folderId === undefined) return entry
+      return { ...entry, folderId: spot.folderId }
+    })
     .sort((left, right) => Number(right.addedAt ?? 0) - Number(left.addedAt ?? 0))
   // Folders travel the same way. Their creation time is the stamp the union
   // compares, so the same folder arriving from two panels stays a single one.
@@ -4152,13 +4169,14 @@ function mergeStates(local, remote) {
       const moveToFolder = useCallback((kind, id, value) => {
         const folderId = typeof value === 'string' ? value : ''
         setMovingId('')
+        const at = Date.now()
         if (kind === 'word') {
-          const next = words.map((entry) => (entry.id === id ? { ...entry, folderId } : entry))
+          const next = words.map((entry) => (entry.id === id ? { ...entry, folderId, folderAt: at } : entry))
           setWords(next)
           persist({ words: next })
           return
         }
-        const next = items.map((entry) => (entry.id === id ? { ...entry, folderId } : entry))
+        const next = items.map((entry) => (entry.id === id ? { ...entry, folderId, folderAt: at } : entry))
         setItems(next)
         persist({ items: next })
       }, [items, words, persist])

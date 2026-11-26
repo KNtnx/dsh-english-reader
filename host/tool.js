@@ -20,6 +20,7 @@
  */
 
 import { mergeStore, readStore, writeStore } from './files.js';
+import { lookUpChinese, lookUpCollins, lookUpWord, lookUpWordNet } from './dictionary.js';
 
 /** The actions the tool answers, in the order the description lists them. */
 export const ACTIONS = [
@@ -33,6 +34,8 @@ export const ACTIONS = [
   'get_settings',
   'set_dictionary',
   'normalize_words',
+  'list_folders',
+  'define_word',
 ];
 
 /** Modes the panel offers for showing a gloss: both languages, English or Chinese. */
@@ -243,6 +246,47 @@ const HANDLERS = {
     return { created: held === undefined, word: publicWord(kept), total: merged.words.length };
   },
 
+  /** The folders a folderId can point at, so a name can be resolved to it. */
+  async list_folders(args) {
+    const library = await readLibrary();
+    const folders = Array.isArray(library.folders) ? library.folders : [];
+    const kind = typeof args.kind === 'string' && args.kind !== '' ? args.kind : null;
+    const shown = kind === null ? folders : folders.filter((folder) => folder.kind === kind);
+    return {
+      total: shown.length,
+      folders: shown.map((folder) => ({
+        id: String(folder.id ?? ''),
+        name: String(folder.name ?? ''),
+        kind: String(folder.kind ?? ''),
+      })),
+    };
+  },
+
+  /**
+   * Look a word up in the dictionaries the panel is configured with, through the
+   * same functions the /dict route uses.
+   */
+  async define_word(args) {
+    const word = String(args.word ?? '').trim();
+    if (word === '') throw new Error('define_word needs a word');
+    const library = await readLibrary();
+    const wanted = library.settings !== null && typeof library.settings === 'object'
+      ? library.settings.dictionary ?? null
+      : null;
+    const english = String(args.english ?? wanted?.english ?? 'wordnet');
+    const chinese = String(args.chinese ?? wanted?.chinese ?? 'iciba');
+    const result = { ok: true, action: 'define_word', word, english: null, chinese: null };
+    if (english === 'collins') result.english = await lookUpCollins(word, null).catch(() => null);
+    else if (english === 'wiktionary') result.english = await lookUpWord(word).catch(() => null);
+    else if (english === 'wordnet') result.english = await lookUpWordNet(word).catch(() => null);
+    if (chinese === 'iciba') result.chinese = await lookUpChinese(word).catch(() => null);
+    if (result.english === null && result.chinese === null) {
+      result.ok = false;
+      result.error = `${word} was not found in ${english} or ${chinese}`;
+    }
+    return result;
+  },
+
   /**
    * Strip sentence punctuation from every saved word, keeping the sentence it was
    * met in byte for byte. A word that would become empty is left alone.
@@ -399,10 +443,13 @@ export function englishReaderTool() {
         action: {
           type: 'string',
           enum: ACTIONS,
-          description: 'What to do: list_words, add_word, remove_word, list_dialogues, add_dialogue, rename_dialogue, delete_dialogue, get_settings, set_dictionary, or normalize_words (strip sentence punctuation from saved words, keeping their 原文).',
+          description: 'What to do: list_words, add_word, remove_word, list_dialogues, add_dialogue, rename_dialogue, delete_dialogue, get_settings, set_dictionary, normalize_words (strip sentence punctuation from saved words, keeping their 原文), list_folders, or define_word.',
         },
         word: { type: 'string', description: 'add_word and remove_word: the word, in any case and with or without surrounding punctuation.' },
         dryRun: { type: 'boolean', description: 'normalize_words: report what would change without writing.' },
+        kind: { type: 'string', description: 'list_folders: only folders of this kind.', enum: ['dialogue', 'word'] },
+        english: { type: 'string', description: 'define_word: English dictionary to use.', enum: ['wordnet', 'wiktionary', 'collins', 'model'] },
+        chinese: { type: 'string', description: 'define_word: Chinese dictionary to use.', enum: ['iciba', 'model'] },
         context: { type: 'string', description: 'add_word: the English sentence the word was met in; shown with the word in the panel.' },
         folderId: { type: 'string', description: 'add_word and add_dialogue: the folder to file the entry under; omit for unclassified.' },
         limit: { type: 'integer', description: 'list_words and list_dialogues: how many entries to return, 1 to 200; 50 when omitted.' },

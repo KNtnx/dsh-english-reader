@@ -320,3 +320,34 @@ test('normalize_words strips punctuation and keeps the sentence it came from', a
   assert.equal(skipped.skipped.length, 1, 'the un-cleanable entry is reported, not deleted')
   assert.equal((await stored(home)).words.find((entry) => entry.id === 'x').word, '...')
 })
+
+test('list_folders resolves a name to the id a word carries', async () => {
+  const home = await scratch()
+  const files = await import('../host/files.js')
+  const library = await files.readStore() ?? { savedAt: 0, items: [], words: [], removed: [] }
+  await files.writeStore({
+    ...library,
+    folders: [
+      { id: 'f1', name: '经济', kind: 'word', createdAt: 1 },
+      { id: 'f2', name: '旅游', kind: 'dialogue', createdAt: 2 },
+    ],
+  })
+  const all = await run({ action: 'list_folders' })
+  assert.deepEqual(all.folders.map((folder) => folder.name).sort(), ['旅游', '经济'])
+  const wordsOnly = await run({ action: 'list_folders', kind: 'word' })
+  assert.deepEqual(wordsOnly.folders, [{ id: 'f1', name: '经济', kind: 'word' }])
+
+  // The id it reports is the one add_word accepts.
+  await run({ action: 'add_word', word: 'tariff', folderId: wordsOnly.folders[0].id })
+  const listed = await run({ action: 'list_words' })
+  assert.equal(listed.words.find((entry) => entry.id === 'tariff').folderId, 'f1')
+})
+
+test('define_word answers from the configured dictionary', async () => {
+  const home = await scratch()
+  // No network in the fixture: the dictionary functions answer null, and the tool
+  // reports the miss instead of pretending.
+  const miss = await run({ action: 'define_word', word: 'unfindablewordfortest' })
+  assert.equal(miss.ok, false)
+  assert.match(miss.error, /not found/)
+})
