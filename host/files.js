@@ -86,10 +86,57 @@ export async function writeStore(state) {
 }
 
 /**
+ * Where each entry lives, decided by its newest move.
+ *
+ * A move changes `folderId` and nothing else that the union looks at: a word
+ * filed under "25.12.1" keeps its `addedAt`, and a rename keeps its
+ * `updatedAt`. Comparing those stamps would let a copy that never saw the move
+ * erase it, so `folderAt` — written by whoever files an entry, the panel or the
+ * tool — is what settles the question. This is the browser's rule as well (see
+ * `mergeStates` in client.js): the two halves meet in this one file.
+ * @param {any[]} lists - every copy of the list that is being merged.
+ * @returns {Map<string, {at: number, folderId: string}>} id to its newest filing.
+ */
+function placements(lists) {
+  const out = new Map();
+  for (const list of lists) {
+    for (const entry of Array.isArray(list) ? list : []) {
+      const id = String(entry?.id ?? entry?.word ?? '');
+      if (id === '') continue;
+      const at = Number(entry.folderAt ?? 0);
+      const held = out.get(id);
+      // A tie means two filings in the same millisecond: the one being written
+      // now is the later of them, and the list being merged in comes second.
+      if (held === undefined || at >= held.at) {
+        out.set(id, { at, folderId: String(entry.folderId ?? '') });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Give each entry the folder its newest filing put it in.
+ * @param {any[]} list - the merged entries.
+ * @param {Map<string, {at: number, folderId: string}>} spots - from `placements`.
+ * @returns {any[]} the same entries, with `folderId` settled.
+ */
+function placed(list, spots) {
+  return list.map((entry) => {
+    const spot = spots.get(String(entry?.id ?? entry?.word ?? ''));
+    // An entry that was never filed keeps its shape: no folderId is invented.
+    if (spot === undefined) return entry;
+    if (spot.folderId === '' && entry.folderId === undefined) return entry;
+    return { ...entry, folderId: spot.folderId };
+  });
+}
+
+/**
  * Union two library payloads by id, keeping the newer entry of each.
  *
- * Two panels can be open at once (sidebar and full page). Merging here means the
- * one that saves last cannot delete what the other just added.
+ * Two panels can be open at once (sidebar and full page), and a tool call writes
+ * the same file. Merging here means the one that saves last cannot delete what
+ * the other just added, and that a move survives a save that never saw it.
  */
 export function mergeStore(current, incoming) {
   /** `kind:id` to the moment it was deleted, from what is stored and what arrives. */
@@ -119,8 +166,8 @@ export function mergeStore(current, incoming) {
   }).sort((left, right) => left.at - right.at).slice(-500);
   const merged = {
     savedAt: Math.max(Number(current?.savedAt ?? 0), Number(incoming.savedAt ?? 0)),
-    items: union(current?.items, incoming.items, 'item', 'updatedAt').slice(0, 500),
-    words: union(current?.words, incoming.words, 'word', 'addedAt').slice(0, 2000),
+    items: placed(union(current?.items, incoming.items, 'item', 'updatedAt'), placements([current?.items, incoming.items])).slice(0, 500),
+    words: placed(union(current?.words, incoming.words, 'word', 'addedAt'), placements([current?.words, incoming.words])).slice(0, 2000),
     folders: union(current?.folders, incoming.folders, 'folder', 'createdAt').slice(0, 200),
     removed,
   };
@@ -130,6 +177,47 @@ export function mergeStore(current, incoming) {
     if (!(key in merged)) merged[key] = value;
   }
   return merged;
+}
+
+/**
+ * Whether two lists of the library hold the same entries.
+ *
+ * Order is not part of the library: the merge keeps whatever order the file has,
+ * and a panel that sends the same entries in another order has nothing to learn.
+ * Comparing by id makes that the case, so only a real difference is reported.
+ * @param {any} left - one list.
+ * @param {any} right - another list.
+ * @returns {boolean} whether they hold the same entries.
+ */
+export function sameList(left, right) {
+  const of = (value) => (Array.isArray(value) ? value : []);
+  if (of(left).length !== of(right).length) return false;
+  const key = (entry) => String(entry?.id ?? entry?.word ?? '');
+  const sorted = (list) => [...list].sort((one, other) => key(one).localeCompare(key(other)));
+  return JSON.stringify(sorted(of(left))) === JSON.stringify(sorted(of(right)));
+}
+
+/**
+ * A short fingerprint of a whole library.
+ *
+ * An open panel cannot poll a 70 KB library every couple of seconds, and it has
+ * no other way to learn that a tool call changed the file. The revision is a
+ * hash of the stored text, so two panels — or a panel and a tool call — can agree
+ * on "nothing changed" by exchanging a dozen bytes. FNV-1a is not a security
+ * primitive: it only has to notice an edit, and the length rides along to make a
+ * collision of the two cheap.
+ * @param {any} state - the library as it is stored.
+ * @returns {string} the revision, '' for an empty library.
+ */
+export function revisionOf(state) {
+  if (state === null || state === undefined) return '';
+  const text = JSON.stringify(state);
+  let hash = 2166136261;
+  for (let at = 0; at < text.length; at += 1) {
+    hash ^= text.charCodeAt(at);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${(hash >>> 0).toString(36)}.${text.length.toString(36)}`;
 }
 
 /**

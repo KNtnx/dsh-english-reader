@@ -22,7 +22,7 @@ The browser procedure — the twelve-step pass that every release and every stru
 
 ```bash
 npm install     # once; react, react-dom and jsdom are devDependencies
-npm test        # every file under test/, ~2 s
+npm test        # every file under test/, ~2 s, 121 cases
 ```
 
 While fixing something, one file at a time:
@@ -42,7 +42,7 @@ lookup once kept a machine busy for minutes.
 | Static contracts | `copy.test.mjs`, `views.test.mjs`, `host.test.mjs` ("every route…", "every module points at files that exist") | do the client and host agree on paths, keys, classes, and file locations? |
 | Pure logic | `internals.test.mjs` | sentence splitting, marks, merge, tombstones, hashes |
 | Host routes | `host.test.mjs` | one route at a time against a temporary `$DSH_HOME`, with a stubbed `fetch` for upstreams |
-| Panel interaction | `panel.smoke.test.mjs`, `panel.dict.test.mjs`, `panel.translate.test.mjs`, `panel.playback.test.mjs` | real `client.js`, real React 19, real click/type/right-click events, mock host |
+| Panel interaction | `panel.smoke.test.mjs`, `panel.dict.test.mjs`, `panel.translate.test.mjs`, `panel.playback.test.mjs`, `panel.sync.test.mjs` | real `client.js`, real React 19, real click/type/right-click events, mock host |
 
 The panel layer is the important one: it mounts the actual bundle through
 `__ModuleLoader__`, so a missing hook, a wrong element type, or a lost parameter
@@ -61,6 +61,8 @@ fails there rather than in the browser.
 | Changing the translation source kept the old translation — only hash and line count were checked | `panel.translate.test.mjs` (4 cases) |
 | The floating word card stayed over the saved-words page | `panel.smoke.test.mjs` "leaving the dialogue closes the floating card" |
 | Deleted words and dialogues came back after a sync — union merge cannot delete | `host.test.mjs` "the host forgets what a panel deleted"; `internals.test.mjs` tombstone cases |
+| A folder assignment made by hand (or by the tool) was erased by a browser that never saw the move — the host merged on `addedAt`, which a move does not touch | `host.test.mjs` "a move survives a save that never saw it" and "the browser and the host settle a filing the same way" |
+| A tool call needed a page reload to show up — the panel read the library once, on mount | `panel.sync.test.mjs` (four cases: added, deleted, its own save is not news, a corrected save is read back) |
 | Sessions did not share words or dialogues — state lived in `localStorage` per origin | `host.test.mjs` "the library is shared through the host, not one browser"; `panel.dict.test.mjs` "a word saved in another session is already in the list" |
 | React key warning on every mount — array child without keys | `panel.smoke.test.mjs` "the panel mounts without console errors" |
 | Changing the voice did not re-read the current sentence — the clip was already downloaded | `panel.playback.test.mjs` "changing the voice re-reads the sentence that is playing" |

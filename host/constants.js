@@ -48,6 +48,7 @@ export const PATHS = {
   dictAi: '/api-dsh-english-reader/dict/ai',
   dictKey: '/api-dsh-english-reader/dict/key',
   store: '/api-dsh-english-reader/store',
+  storeRevision: '/api-dsh-english-reader/store/revision',
   translate: '/api-dsh-english-reader/translate',
   translateOptions: '/api-dsh-english-reader/translate/options',
   translateModels: '/api-dsh-english-reader/translate/models',

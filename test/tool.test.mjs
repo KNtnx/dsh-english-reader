@@ -335,7 +335,7 @@ test('list_folders resolves a name to the id a word carries', async () => {
   const all = await run({ action: 'list_folders' })
   assert.deepEqual(all.folders.map((folder) => folder.name).sort(), ['旅游', '经济'])
   const wordsOnly = await run({ action: 'list_folders', kind: 'word' })
-  assert.deepEqual(wordsOnly.folders, [{ id: 'f1', name: '经济', kind: 'word' }])
+  assert.deepEqual(wordsOnly.folders, [{ id: 'f1', name: '经济', kind: 'word', count: 0 }])
 
   // The id it reports is the one add_word accepts.
   await run({ action: 'add_word', word: 'tariff', folderId: wordsOnly.folders[0].id })
@@ -351,3 +351,149 @@ test('define_word answers from the configured dictionary', async () => {
   assert.equal(miss.ok, false)
   assert.match(miss.error, /not found/)
 })
+
+test('a word filed by name is created, stamped and counted', async () => {
+  const home = await scratch()
+  // A conversation knows the shelf by name, not by id: filing must not need a
+  // listing first, and the folder does not exist yet.
+  const added = await run({ action: 'add_word', word: 'tariff', folder: '25.12.1' })
+  assert.equal(added.ok, true, added.error)
+  assert.equal(added.folder.name, '25.12.1')
+  assert.equal(added.folder.created, true, 'the folder was made by the filing')
+  assert.equal(added.word.folder, '25.12.1')
+
+  // The stamp is what survives a merge: without `folderAt`, a panel that never
+  // saw the filing overwrites it on its next save.
+  const file = await stored(home)
+  const word = file.words.find((entry) => entry.id === 'tariff')
+  assert.equal(word.folderId, added.folder.id)
+  assert.ok(word.folderAt > 0, 'the filing carries the moment it happened')
+  assert.deepEqual(file.folders.map((folder) => `${folder.kind}:${folder.name}`), ['word:25.12.1'])
+
+  // Filing the same name again reuses the folder instead of making a second one.
+  const again = await run({ action: 'add_word', word: 'quota', folder: '25.12.1' })
+  assert.equal(again.folder.created, false)
+  assert.equal(again.folder.id, added.folder.id)
+
+  const folders = await run({ action: 'list_folders', kind: 'word' })
+  assert.deepEqual(folders.folders, [{ id: added.folder.id, name: '25.12.1', kind: 'word', count: 2 }])
+  assert.equal(folders.unfiled, 0, 'nothing is unclassified yet')
+
+  // Names are matched without regard to case, and cannot be confused with an id.
+  const same = await run({ action: 'move_words', word: 'tariff', folder: '25.12.1' })
+  assert.equal(same.folder.id, added.folder.id)
+  const refused = await run({ action: 'add_word', word: 'zebra', folderId: 'no-such-folder' })
+  assert.equal(refused.ok, false)
+  assert.match(refused.error, /no word folder with the id/)
+  assert.match(refused.error, /25\.12\.1/, 'the error says which folders do exist')
+});
+
+test('several words are added and filed in one call', async () => {
+  const home = await scratch()
+  const added = await run({
+    action: 'add_words',
+    words: ['revive', 'tackle', 'quota', 'revive'],
+    context: 'They revive it.',
+    folder: '26.6.2',
+  })
+  assert.equal(added.ok, true, added.error)
+  assert.equal(added.added, 3, 'three words, the duplicate counted once')
+  assert.equal(added.total, 3)
+  assert.deepEqual(added.words.map((entry) => entry.word), ['revive', 'tackle', 'quota'])
+  assert.equal(added.words[0].context, 'They revive it.', 'one context serves the batch')
+  assert.equal(added.words[0].folder, '26.6.2')
+
+  const moved = await run({ action: 'move_words', words: ['revive', 'quota', 'not-saved'], folder: '' })
+  assert.equal(moved.ok, true, moved.error)
+  assert.equal(moved.moved, 2)
+  assert.deepEqual(moved.missing, ['not-saved'], 'a word that was never saved is reported, not invented')
+
+  const listed = await run({ action: 'list_words', folder: '26.6.2' })
+  assert.deepEqual(listed.words.map((entry) => entry.word), ['tackle'])
+  assert.equal(listed.total, 1)
+  assert.equal((await run({ action: 'list_words' })).total, 3)
+
+  // Unclassified is where a move to no folder leaves an entry, and it stays so.
+  const file = await stored(home)
+  const unfiled = file.words.filter((entry) => entry.folderId === '')
+  assert.deepEqual(unfiled.map((entry) => entry.id).sort(), ['quota', 'revive'])
+  assert.ok(unfiled.every((entry) => entry.folderAt > 0), 'a move out of a folder is a move too')
+});
+
+test('a dialogue can be created in a folder and moved between them', async () => {
+  const home = await scratch()
+  const added = await run({ action: 'add_dialogue', text: 'A: The kettle is on.\nB: Then we wait.', title: 'Kettle', folder: '25.12.1' })
+  assert.equal(added.ok, true, added.error)
+  assert.equal(added.folder.name, '25.12.1')
+  assert.equal(added.dialogue.folder, '25.12.1')
+  const id = added.dialogue.id
+
+  const moved = await run({ action: 'move_dialogue', id, folder: '26.6.2' })
+  assert.equal(moved.ok, true, moved.error)
+  assert.equal(moved.dialogue.folder, '26.6.2')
+  assert.equal(moved.folder.created, true, 'the second shelf was created by the move')
+
+  // The title is enough when a conversation does not hold the id.
+  const byTitle = await run({ action: 'move_dialogue', title: 'Kettle', folder: '25.12.1' })
+  assert.equal(byTitle.ok, true, byTitle.error)
+  assert.equal(byTitle.dialogue.folder, '25.12.1')
+
+  const folders = await run({ action: 'list_folders', kind: 'dialogue' })
+  assert.deepEqual(folders.folders.map((folder) => `${folder.name}:${folder.count}`).sort(), ['25.12.1:1', '26.6.2:0'])
+  assert.equal((await run({ action: 'list_dialogues', folder: '26.6.2' })).total, 0)
+  assert.equal((await run({ action: 'list_dialogues', folder: '25.12.1' })).total, 1)
+
+  const wordFolders = await run({ action: 'list_folders', kind: 'word' })
+  assert.deepEqual(wordFolders.folders, [], 'a dialogue folder is not a word folder')
+
+  // The move is stamped, or a panel that never saw it would undo it.
+  const file = await stored(home)
+  assert.ok(file.items[0].folderAt > 0)
+});
+
+test('folders are made once, by name, for one list at a time', async () => {
+  await scratch()
+  const first = await run({ action: 'create_folder', name: '经济', kind: 'word' })
+  assert.equal(first.created, true)
+  assert.equal(first.folder.kind, 'word')
+
+  const again = await run({ action: 'create_folder', name: '经济', kind: 'word' })
+  assert.equal(again.created, false, 'the same name is one folder')
+  assert.equal(again.folder.id, first.folder.id)
+
+  // The other list keeps its own folder of the same name.
+  const other = await run({ action: 'create_folder', name: '经济', kind: 'dialogue' })
+  assert.equal(other.created, true)
+  assert.notEqual(other.folder.id, first.folder.id)
+
+  const refused = await run({ action: 'create_folder', name: '   ' })
+  assert.equal(refused.ok, false)
+  assert.match(refused.error, /needs a name/)
+});
+
+test('a move the tool writes survives a panel save that never saw it', async () => {
+  // The host merges by stamp, and filing does not change any of them. This is
+  // the bug the user hit: 43 words filed by hand were back to unclassified.
+  const home = await scratch()
+  await run({ action: 'add_word', word: 'dream', context: 'The dream returns.' })
+  await run({ action: 'move_words', word: 'dream', folder: '25.12.1' })
+  const folderId = (await run({ action: 'list_folders', kind: 'word' })).folders[0].id
+
+  const files = await import('../host/files.js')
+  const library = await files.readStore()
+  assert.equal(library.words[0].folderId, folderId)
+
+  // A panel that has never seen the filing posts its own copy, with the same
+  // addedAt and no folder at all.
+  const stale = {
+    savedAt: Date.now(),
+    items: [],
+    words: [{ id: 'dream', word: 'dream', context: 'The dream returns.', addedAt: library.words[0].addedAt }],
+  }
+  const merged = files.mergeStore(library, stale)
+  assert.equal(merged.words[0].folderId, folderId, 'the stamp kept the filing')
+
+  await files.writeStore(merged)
+  assert.equal((await run({ action: 'list_words' })).words[0].folder, '25.12.1')
+  assert.ok(home.length > 0)
+});

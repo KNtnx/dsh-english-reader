@@ -128,6 +128,30 @@ test('the shared library is merged by id, newer copy wins', () => {
   assert.equal(merged.fontScale, 1.2, 'browser settings are not taken from the host')
 })
 
+test('the browser and the host settle a filing the same way', async () => {
+  // Two implementations meet in one file: client.js merges what it holds with
+  // what the host answers, host/files.js merges what a panel posts with the
+  // file. If they disagree, a save silently undoes a move.
+  const { mergeStore } = await import('../host/files.js')
+  const cases = [
+    { held: { folderId: 'f1', folderAt: 500 }, arriving: {}, expect: 'f1' },
+    { held: {}, arriving: { folderId: 'f1', folderAt: 500 }, expect: 'f1' },
+    { held: { folderId: 'f1', folderAt: 500 }, arriving: { folderId: '', folderAt: 600 }, expect: '' },
+    // Same millisecond: the copy merged in second is the newer intent.
+    { held: { folderId: 'f1', folderAt: 600 }, arriving: { folderId: 'f2', folderAt: 600 }, expect: 'f2' },
+    { held: { folderId: 'f1', folderAt: 600 }, arriving: { folderId: '', folderAt: 600 }, expect: '' },
+    { held: {}, arriving: {}, expect: '' },
+  ]
+  for (const { held, arriving, expect } of cases) {
+    const word = (extra) => ({ id: 'dream', word: 'dream', addedAt: 100, ...extra })
+    const [left, right] = [{ words: [word(held)] }, { words: [word(arriving)] }]
+    const host = mergeStore(left, right).words[0].folderId ?? ''
+    const client = mergeStates(left, right).words[0].folderId ?? ''
+    assert.equal(host, expect, `the host settled ${JSON.stringify({ held, arriving })} as ${host}`)
+    assert.equal(client, expect, `the browser settled ${JSON.stringify({ held, arriving })} as ${client}`)
+  }
+})
+
 test('a panel with nothing stored adopts the shared library as it is', () => {
   const remote = { items: [{ id: 'a', updatedAt: 5 }], words: [{ id: 'w', addedAt: 5 }] }
   assert.deepEqual(mergeStates({}, remote).items, remote.items)

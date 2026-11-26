@@ -210,7 +210,7 @@ test('the library is shared through the host, not one browser', async () => {
   assert.ok(route !== undefined, 'the store route is registered')
 
   const fresh = await callHandler(route)
-  assert.deepEqual(fresh.body, { ok: true, state: null }, 'a fresh host holds nothing yet')
+  assert.deepEqual(fresh.body, { ok: true, state: null, revision: '' }, 'a fresh host holds nothing yet')
 
   const first = await callHandler(route, {
     method: 'POST',
@@ -311,3 +311,145 @@ test('every module points at files that exist', () => {
   assert.deepEqual(missing, [], `modules reference files that do not exist: ${missing.join(', ')}`)
   assert.ok(existsSync(join(hostDir, '../worker.mjs')), 'the speech worker is where the host expects it')
 })
+
+test('a move survives a save that never saw it', async () => {
+  // A word is stamped by `addedAt` and a dialogue by `updatedAt`; filing one
+  // changes neither. The host used to settle the merge on those stamps alone,
+  // so a panel that had never seen the move erased it on its next save — the
+  // user had to reload, and sometimes even that was not enough.
+  const files = await import('../host/files.js')
+  const filedAt = (entry) => files.mergeStore(entry.host, entry.incoming);
+
+  const word = filedAt({
+    host: { words: [{ id: 'dream', word: 'dream', addedAt: 100, folderId: 'f1', folderAt: 500 }] },
+    incoming: { words: [{ id: 'dream', word: 'dream', addedAt: 100 }] },
+  });
+  assert.equal(word.words[0].folderId, 'f1', 'the newer filing wins over the older copy');
+
+  const dialogue = filedAt({
+    host: { items: [{ id: 'doc-1', title: 'One', updatedAt: 100, folderId: 'g1', folderAt: 500 }] },
+    incoming: { items: [{ id: 'doc-1', title: 'One', updatedAt: 100 }] },
+  });
+  assert.equal(dialogue.items[0].folderId, 'g1');
+
+  // Filing something back to unclassified is a move too, and it has to hold.
+  const unfiled = filedAt({
+    host: { words: [{ id: 'dream', word: 'dream', addedAt: 100, folderId: 'f1', folderAt: 500 }] },
+    incoming: { words: [{ id: 'dream', word: 'dream', addedAt: 100, folderId: '', folderAt: 600 }] },
+  });
+  assert.equal(unfiled.words[0].folderId, '', 'the newest move reads as unclassified');
+
+  // Two filings inside one millisecond: the one being written now is the later
+  // of them, so the incoming copy has to win the tie.
+  const sameMoment = filedAt({
+    host: { words: [{ id: 'dream', word: 'dream', addedAt: 100, folderId: 'f1', folderAt: 700 }] },
+    incoming: { words: [{ id: 'dream', word: 'dream', addedAt: 100, folderId: 'f2', folderAt: 700 }] },
+  });
+  assert.equal(sameMoment.words[0].folderId, 'f2');
+
+  // An entry that was never filed keeps its shape: no folderId is invented.
+  const plain = filedAt({
+    host: { words: [{ id: 'dream', word: 'dream', addedAt: 100 }] },
+    incoming: { words: [{ id: 'dream', word: 'dream', addedAt: 100 }] },
+  });
+  assert.equal(Object.hasOwn(plain.words[0], 'folderId'), false);
+});
+
+test('the revision tells "written elsewhere" from "written by me"', async () => {
+  const files = await import('../host/files.js');
+  assert.equal(files.revisionOf(null), '', 'an empty host has no revision');
+  const one = { savedAt: 1, items: [], words: [{ id: 'a', word: 'a', addedAt: 1 }] };
+  const two = { savedAt: 2, items: [], words: [{ id: 'b', word: 'b', addedAt: 2 }] };
+  assert.equal(files.revisionOf(one), files.revisionOf(JSON.parse(JSON.stringify(one))),
+    'the same file read twice keeps its revision');
+  assert.notEqual(files.revisionOf(one), files.revisionOf(two));
+  // A word filed elsewhere is news even when every stamp is untouched.
+  const filed = { savedAt: 1, items: [], words: [{ id: 'a', word: 'a', addedAt: 1, folderId: 'f', folderAt: 9 }] };
+  assert.notEqual(files.revisionOf(one), files.revisionOf(filed));
+});
+
+test('an open panel can ask where the library stands without reading it', async () => {
+  const route = routes.get(`${PREFIX}/store/revision`);
+  assert.ok(route !== undefined, 'the revision route is registered');
+
+  const before = await callHandler(route);
+  assert.equal(before.body.ok, true);
+  assert.equal(typeof before.body.revision, 'string');
+
+  await callHandler(routes.get(`${PREFIX}/store`), {
+    method: 'POST',
+    body: { state: { savedAt: 900, items: [], words: [{ id: 'lantern', word: 'lantern', addedAt: 900 }] } },
+  });
+  const after = await callHandler(route);
+  assert.notEqual(after.body.revision, before.body.revision, 'a write moves the revision');
+
+  // The full read carries the same revision, so a panel that pulls the library
+  // and one that only asks agree on what it just saw.
+  const full = await callHandler(routes.get(`${PREFIX}/store`));
+  assert.equal(full.body.revision, after.body.revision);
+
+  const wrongMethod = await callHandler(route, { method: 'POST', body: {} });
+  assert.equal(wrongMethod.status, 405);
+});
+
+test('a save the host had to correct says so', async () => {
+  // The browser sent a library and got back "kept" — but the host kept
+  // something else, because a word was deleted, or a tool filed one the browser
+  // has never seen. The panel has to know, or it keeps showing a library nobody
+  // else has until the page is reloaded.
+  const route = routes.get(`${PREFIX}/store`);
+  const panelSaves = (state) => callHandler(route, { method: 'POST', body: { state } });
+  // The store is shared by every test in this file; start from nothing so the
+  // first save is a whole library rather than a correction of leftovers.
+  const files = await import('../host/files.js');
+  await files.writeStore({ savedAt: 0, items: [], words: [], folders: [], removed: [] });
+
+  const first = await panelSaves({
+    savedAt: 1000,
+    items: [],
+    words: [{ id: 'dream', word: 'dream', addedAt: 1000 }, { id: 'lantern', word: 'lantern', addedAt: 1000 }],
+  });
+  assert.equal(first.body.changed, false, 'the first save is the library, so nothing was corrected');
+
+  // The panel deletes one word; the host agrees with the rest.
+  const answer = await panelSaves({
+    savedAt: 1001,
+    items: [],
+    words: [{ id: 'dream', word: 'dream', addedAt: 1000 }],
+    removed: [{ kind: 'word', id: 'lantern', at: 1001 }],
+  });
+  assert.equal(answer.body.changed, false, 'a deletion the host applies is not a correction');
+
+  // Now a panel that never saw the deletion posts the word again.
+  const corrected = await panelSaves({
+    savedAt: 1002,
+    items: [],
+    words: [{ id: 'dream', word: 'dream', addedAt: 1000 }, { id: 'lantern', word: 'lantern', addedAt: 1000 }],
+  });
+  assert.equal(corrected.body.changed, true, 'the host dropped a word the panel still had');
+  assert.equal(corrected.body.revision, await revisionOfAnswer(), 'the answer carries the revision it wrote');
+
+  // Order alone is not a correction: the browser sorts its own list.
+  const reordered = await panelSaves({
+    savedAt: 1003,
+    items: [],
+    words: [{ id: 'dream', word: 'dream', addedAt: 1000 }],
+    removed: [{ kind: 'word', id: 'lantern', at: 1001 }],
+  });
+  assert.equal(reordered.body.changed, false, 'the same entries in the same order are no news');
+
+  const other = await panelSaves({
+    savedAt: 1004,
+    items: [],
+    words: [],
+    removed: [{ kind: 'word', id: 'lantern', at: 1001 }],
+  });
+  assert.equal(other.body.changed, true, 'a word the panel dropped is a correction too');
+});
+
+/** The revision of the library as it is stored right now, for comparing answers. */
+async function revisionOfAnswer() {
+  const { revisionOf } = await import('../host/files.js');
+  const { readStore } = await import('../host/files.js');
+  return revisionOf(await readStore());
+}

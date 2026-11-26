@@ -1,6 +1,6 @@
 import { mkdir, rename } from 'node:fs/promises';
 import { EDGE_VOICE, LOCAL_VOICES, MAX_HEADER_MARKS, MAX_STORE_BYTES, MAX_TEXT, MAX_TRANSLATE_CHARS, MAX_TRANSLATE_TEXTS, PATHS, PROTOCOLS, modelDir } from './constants.js';
-import { findSource, mergeStore, publicSource, readCollinsKey, readSources, readStore, resolveKey, writeCollinsKey, writeSources, writeStore } from './files.js';
+import { findSource, mergeStore, publicSource, readCollinsKey, readSources, readStore, resolveKey, revisionOf, sameList, writeCollinsKey, writeSources, writeStore } from './files.js';
 import { defineWithModel, dictKey, lookUpChinese, lookUpCollins, lookUpWord, lookUpWordNet } from './dictionary.js';
 import { defaultModelRoute, secret, targetLanguage } from './model.js';
 import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startInstall, synthesize, synthesizeApi, worker } from './speech.js';
@@ -578,7 +578,8 @@ function sharedState(state) {
  */
 async function handleStore(request, response) {
   if (request.method === 'GET') {
-    sendJson(response, { ok: true, state: await readStore() });
+    const state = await readStore();
+    sendJson(response, { ok: true, state, revision: revisionOf(state) });
     return;
   }
   if (request.method !== 'POST') { sendJson(response, { ok: false, error: 'method not allowed' }, 405); return; }
@@ -595,7 +596,37 @@ async function handleStore(request, response) {
   try {
     const merged = mergeStore(await readStore(), stored);
     await writeStore(merged);
-    sendJson(response, { ok: true, savedAt: merged.savedAt });
+    // The revision of what was just written, so the panel that sent it knows
+    // this version as its own and does not pull it back as someone else's.
+    //
+    // Unless the merge had to correct the save: a panel that holds a word the
+    // host has tombstoned, or has never seen a word the host holds, would
+    // otherwise take its own write as the truth and keep a library nobody else
+    // has. Saying so costs one read, and only when it is true.
+    const changed = !sameList(merged.items, stored.items)
+      || !sameList(merged.words, stored.words)
+      || !sameList(merged.folders, stored.folders)
+      || !sameList(merged.removed, stored.removed);
+    sendJson(response, { ok: true, savedAt: merged.savedAt, revision: revisionOf(merged), changed });
+  } catch (error) {
+    sendJson(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
+  }
+}
+
+/**
+ * The revision of the shared library, and nothing else.
+ *
+ * The panel asks this every couple of seconds: the full library is far too big
+ * for that, and the only question is whether somebody else — another panel, or
+ * an `english_reader` tool call — has written since.
+ * @param {import('node:http').IncomingMessage} request - the incoming request.
+ * @param {import('node:http').ServerResponse} response - the response to complete.
+ */
+async function handleStoreRevision(request, response) {
+  if (request.method !== 'GET') { sendJson(response, { ok: false, error: 'method not allowed' }, 405); return; }
+  try {
+    const state = await readStore();
+    sendJson(response, { ok: true, revision: revisionOf(state), savedAt: Number(state?.savedAt ?? 0) });
   } catch (error) {
     sendJson(response, { ok: false, error: error instanceof Error ? error.message : String(error) }, 500);
   }
@@ -905,6 +936,7 @@ const ROUTES = [
   { path: PATHS.dictKey, handler: handleDictKey, effect: 'english-reader: collins key' },
   { path: PATHS.dictAi, handler: handleDictAi, effect: 'english-reader: model dictionary' },
   { path: PATHS.store, handler: handleStore, effect: 'english-reader: shared library' },
+  { path: PATHS.storeRevision, handler: handleStoreRevision, effect: 'english-reader: shared library revision' },
   { path: PATHS.voices, resource: handleVoices, effect: 'english-reader: voices route' },
   { path: PATHS.validate, handler: handleValidate, effect: 'english-reader: source validation route' },
   { path: PATHS.translate, handler: handleTranslate, effect: 'english-reader: translation route' },

@@ -45,7 +45,7 @@ curl -s -b cookies.txt -o /dev/null -w "%{http_code}\n" \
 3. 点左侧导航 `对话朗读`（VOM 里是 `button "对话朗读"`），进入整页阅读视图。
    **绝对不要在这个窗口打开那条几十万 token 的长会话页**——会把机器内存打满。
 
-### 2.2 十二步验收（每步都要看结果，不是走过场）
+### 2.2 十四步验收（每步都要看结果，不是走过场）
 
 | # | 操作 | 期望 | 判定方式 |
 | --- | --- | --- | --- |
@@ -63,6 +63,8 @@ curl -s -b cookies.txt -o /dev/null -w "%{http_code}\n" \
 | 10 | 展开一个已存单词 | 展开自己的词条；再右键别的词，两者互不覆盖 | 截图 |
 | 11 | 改翻译来源 | 屏幕上译文被替换（不是保留旧的） | 截图 |
 | 12 | 刷新页面 | 阅读位置、单词、对话都还在；**再点播放仍能出声** | network 里 `tts` 仍 `200` |
+| 13 | 不刷新，在对话里让模型调 `english_reader`（如 `add_word` / `move_words`） | 面板两秒内自己变：新词出现在列表、归类进对应夹子 | 截图前后各一张；`bsk_inspect network url=store` 应见 `GET .../store/revision` 反复 `200`，变化时跟一条 `GET .../store` |
+| 14 | 再让模型 `remove_word` | 那一行自己消失，不需要刷新 | 截图；`localStorage` 里该词也不见了 |
 
 > 第 12 步的第 2 半句是 worker 路径 bug 的回归点：数据在、但播放死掉，正是那次事故的样子。
 
@@ -82,7 +84,7 @@ bsk_inspect screenshot              # 三张：阅读页、设置卡片、我的
 
 ```bash
 npm install                 # 一次性：react / react-dom / jsdom 是 devDependencies
-timeout 300 node --test test/        # 全套，约 2 秒，69 项
+timeout 300 node --test test/        # 全套，约 2 秒，121 项
 ```
 
 单文件、单用例：
@@ -101,7 +103,7 @@ node --test --test-name-pattern "gloss" test/
 | 静态契约 | `test/copy.test.mjs`、`test/views.test.mjs`、`test/host.test.mjs`（「every route…」「every module points at files that exist」） | 客户端与宿主对路径、文案 key、CSS 类、文件位置是否一致 |
 | 纯逻辑 | `test/internals.test.mjs` | 断句、marks、合并、墓碑、哈希 |
 | 宿主路由 | `test/host.test.mjs` | 每个路由一条，临时 `$DSH_HOME`，上游 `fetch` 打桩 |
-| 面板交互 | `test/panel.smoke.test.mjs`、`panel.dict`、`panel.translate`、`panel.playback` | 真实 `client.js` + 真实 React + 真实点击/右键/输入 |
+| 面板交互 | `test/panel.smoke.test.mjs`、`panel.dict`、`panel.translate`、`panel.playback`、`panel.sync` | 真实 `client.js` + 真实 React + 真实点击/右键/输入 |
 
 面板层最重要：它通过 `__ModuleLoader__` 挂载真正的 bundle，所以少一个 hook、错一个元素类型、漏一个参数，都会在这里炸，而不是在你面前炸。
 
@@ -135,6 +137,9 @@ node --test --test-name-pattern "gloss" test/
 | 旧格式词典记录（字符串 senses、丢 example）崩卡片 | `internals.test.mjs` 词典形状用例 |
 | 断句切错缩写/小数、换行没接回、后引号丢失 | `internals.test.mjs` 7 条断句用例 |
 | 宿主没给 marks 时高亮错位 | `internals.test.mjs`「without marks the words are spread over the clip by length」 |
+| 手改/工具写的归类被浏览器旧副本抹掉 ← 宿主合并只看 `addedAt`，而移动不改它 | `host.test.mjs`「a move survives a save that never saw it」「the browser and the host settle a filing the same way」（`internals.test.mjs` 同一条跨端一致性用例） |
+| 工具写完必须刷新页面才看得见 ← 面板只在挂载时读一次库 | `panel.sync.test.mjs` 四条：新增、删除、自己的写不回头、被宿主纠正后立刻读回 |
+| 同一毫秒内两次移动，先写入的赢 ← 时间戳相等时用 `>` 判新 | `host.test.mjs`「a move survives a save that never saw it」的 sameMoment 分支；`internals.test.mjs` 跨端一致性用例 |
 
 ---
 

@@ -150,9 +150,12 @@ instant, and the next three sentences are synthesized ahead of the one playing.
 - **The local model is English and CPU-only.** It is Kokoro-82M, which is fast but not as
   natural as the best cloud voices, and the first sentence after a restart waits for the
   model to load.
-- **The shared library is last-write-wins per entry.** Two panels open at once merge what
-  they save (the host unions by id), but a panel that is already open does not redraw when
-  the other one saves: the list is read when the panel mounts.
+- **The shared library is last-write-wins per entry, except for filing.** Two panels open
+  at once merge what they save (the host unions by id), and a word's folder is settled by
+  `folderAt` — the moment somebody filed it — so a save that never saw the move cannot undo
+  it. An open panel also asks the host for its revision every two seconds and pulls the
+  library when it moved, so another panel's save, or a tool call, shows up without a
+  reload.
 - **A cleared browser does not clear the library.** Dialogues and words live on the host;
   deleting `library.json` is what starts over.
 - **The dialogue decision is a heuristic.** Two or more distinct labels covering at least

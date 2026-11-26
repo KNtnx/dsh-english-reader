@@ -28,6 +28,17 @@ window.__ModuleLoader__.load({
     const DICT_KEY = '/api-dsh-english-reader/dict/key'
     /** The library and the saved words, kept by the host so every session shares them. */
     const STORE_PATH = '/api-dsh-english-reader/store'
+    /** The same library's fingerprint: a dozen bytes instead of all of it. */
+    const STORE_REVISION = '/api-dsh-english-reader/store/revision'
+
+    /**
+     * How often an open panel asks whether the shared library moved.
+     *
+     * A tool call writes the file this panel reads, and a second panel writes it
+     * too. Without asking, the only way to see either is a page reload. It is an
+     * object rather than a constant so a test can shorten the wait (`internals.sync`).
+     */
+    const SYNC = { pollMs: 2000 }
 
     /**
      * The id a saved word is stored under: lowercase, without punctuation, so
@@ -976,7 +987,9 @@ function mergeStates(local, remote) {
     if (id === '') continue
     const at = Number(entry.folderAt ?? 0)
     const held = placed.get(id)
-    if (held === undefined || at > held.at) placed.set(id, { at, folderId: String(entry.folderId ?? '') })
+    // A tie means two filings in the same millisecond; the copy merged in second
+    // is the newer one, and at boot that is the host's.
+    if (held === undefined || at >= held.at) placed.set(id, { at, folderId: String(entry.folderId ?? '') })
   }
   const words = keep(base.words, remote.words, 'word', 'addedAt')
     .map((entry) => {
@@ -1009,6 +1022,21 @@ function mergeStates(local, remote) {
     if (['wordnet', 'wiktionary', 'collins', 'model'].includes(dictionary.english)) merged.dictEn = dictionary.english
   }
   return merged
+}
+
+/**
+ * Whether two lists of the library hold the same entries.
+ *
+ * The merge sorts by stamp, so two copies of one library can come back in
+ * another order and still be the same library. Comparing sorted by id keeps a
+ * pulled state that says nothing new from being written back as a change.
+ */
+function sameLibrary(left, right) {
+  if (left === right) return true
+  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) return false
+  const key = (entry) => String(entry?.id ?? entry?.word ?? '')
+  const sorted = (list) => [...list].sort((one, other) => key(one).localeCompare(key(other)))
+  return JSON.stringify(sorted(left)) === JSON.stringify(sorted(right))
 }
 
 /** Format a byte count for the model card. */
@@ -1116,7 +1144,13 @@ function mergeStates(local, remote) {
         void fetch(STORE_PATH, { cache: 'no-store', signal })
           .then((response) => (response.ok ? response.json() : null))
           .then((payload) => {
-            if (!cancelled) setBoot(mergeStates(local, payload?.state ?? null))
+            if (cancelled) return
+            // The revision travels with the state: the poll then knows this
+            // browser is up to date and has nothing to pull.
+            setBoot({
+              ...mergeStates(local, payload?.state ?? null),
+              revision: typeof payload?.revision === 'string' ? payload.revision : '',
+            })
           })
           .catch(() => { if (!cancelled) setBoot(local) })
         return () => { cancelled = true }
@@ -2339,7 +2373,7 @@ function mergeStates(local, remote) {
     extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll,
     showTranslation, translateSource, translateModel, columnWidth, fontScale,
     customPct, customPx, dictShow, dictCn, dictEn, dictModelCn, dictModelEn,
-    sections, bundledA, bundledB,
+    sections, bundledA, bundledB, onHostSettings,
   }) {
     const [items, setItems] = useState(initialItems)
     const [activeId, setActiveId] = useState(initialActive)
@@ -2384,6 +2418,21 @@ function mergeStates(local, remote) {
     const [aiEntries, setAiEntries] = useState(() => (initial.aiEntries !== null && typeof initial.aiEntries === 'object' ? initial.aiEntries : {}))
 
     /**
+     * The library as this browser holds it right now, readable from a timer.
+     * The poll below runs outside the render that made it, so it cannot read the
+     * state variables of the moment; it reads these.
+     */
+    const liveRef = useRef(null)
+    liveRef.current = { items, words, folders, removed }
+
+    /**
+     * The revision of the host's copy this browser already has. Every save the
+     * panel makes records the revision it produced, so the poll can tell "the
+     * file moved" from "the file moved because I wrote it".
+     */
+    const revisionRef = useRef(typeof initial.revision === 'string' ? initial.revision : '')
+
+    /**
      * Send the shared half of the panel state to the host, shortly after it
      * changes. Debounced because a reading position changes on every sentence;
      * the host merges by id, so two open panels cannot erase each other.
@@ -2391,6 +2440,8 @@ function mergeStates(local, remote) {
     const storeTimerRef = useRef(0)
     const storePendingRef = useRef(null)
     const saveRef = useRef(null)
+    /** The poll's one-shot check, so a corrected save can ask again at once. */
+    const syncRef = useRef(null)
     const sendStore = useCallback((payload) => {
       storePendingRef.current = payload
       if (storeTimerRef.current !== 0) return
@@ -2401,7 +2452,17 @@ function mergeStates(local, remote) {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body,
-        }).catch(() => { /* the next change sends the whole state again */ })
+        })
+          // This write is this panel's own news. Recording the revision it became
+          // keeps the poll from pulling the library back as somebody else's —
+          // unless the host had to correct the save, in which case the next
+          // check is exactly what brings the correction here.
+          .then((response) => (response.ok ? response.json() : null))
+          .then((payload) => {
+            if (payload?.changed === true) { syncRef.current?.(); return }
+            if (typeof payload?.revision === 'string') revisionRef.current = payload.revision
+          })
+          .catch(() => { /* the next change sends the whole state again */ })
       }, 600)
     }, [])
 
@@ -2455,6 +2516,80 @@ function mergeStates(local, remote) {
         }
       }
     }, [])
+
+    /**
+     * Take the library the host holds and make it this browser's.
+     *
+     * The merge is the same one the panel does at boot, so a second panel, a
+     * tool call and this browser end up with one library. Only a list that really
+     * changed is set: a fresh array of identical entries would make the save
+     * effect fire, and the panel would keep answering its own write.
+     */
+    const adopt = useCallback((remote) => {
+      const merged = mergeStates({ ...initial, ...liveRef.current }, remote)
+      const now = liveRef.current
+      if (!sameLibrary(merged.items, now.items)) setItems(merged.items)
+      if (!sameLibrary(merged.words, now.words)) setWords(merged.words)
+      if (!sameLibrary(merged.folders, now.folders)) setFolders(merged.folders)
+      if (!sameLibrary(merged.removed, now.removed)) setRemoved(merged.removed)
+      // The dictionary choice is shared as well: a `set_dictionary` call shows up
+      // at once, in the same panel, without a reload.
+      const dictionary = remote?.settings?.dictionary
+      if (typeof onHostSettings === 'function' && dictionary !== null && typeof dictionary === 'object') {
+        onHostSettings({ show: merged.dictShow, chinese: merged.dictCn, english: merged.dictEn })
+      }
+    }, [initial, onHostSettings])
+
+    /**
+     * Notice a library that was written elsewhere.
+     *
+     * The host is asked for a fingerprint, not the library: the answer is a few
+     * bytes, and it only grows into a real read when the fingerprint differs from
+     * the one this browser last saw or wrote. A hidden panel asks nothing — nobody
+     * is reading it — and asks the moment it is shown again.
+     */
+    useEffect(() => {
+      let stopped = false
+      let timer = 0
+      const hidden = () => typeof document !== 'undefined' && document.visibilityState === 'hidden'
+      const check = async () => {
+        if (stopped || hidden()) return
+        try {
+          const response = await fetch(STORE_REVISION, { cache: 'no-store' })
+          if (!response.ok) return
+          const fingerprint = await response.json()
+          const revision = typeof fingerprint?.revision === 'string' ? fingerprint.revision : ''
+          if (revision === '' || revision === revisionRef.current) return
+          const full = await fetch(STORE_PATH, { cache: 'no-store' })
+          if (!full.ok) return
+          const payload = await full.json()
+          const state = payload?.state
+          if (state === null || typeof state !== 'object') return
+          // The revision travels with the state it belongs to, so a write that
+          // lands between the two reads is caught by the next round.
+          revisionRef.current = typeof payload.revision === 'string' ? payload.revision : revision
+          adopt(state)
+        } catch { /* the host is not answering: the next round tries again */ }
+      }
+      const loop = async () => {
+        await check()
+        if (stopped) return
+        timer = setTimeout(loop, SYNC.pollMs)
+      }
+      syncRef.current = () => { void check() }
+      timer = setTimeout(loop, SYNC.pollMs)
+      // Coming back to the panel is when its data matters most.
+      const wake = () => { void check() }
+      window.addEventListener('focus', wake)
+      document.addEventListener('visibilitychange', wake)
+      return () => {
+        stopped = true
+        syncRef.current = null
+        clearTimeout(timer)
+        window.removeEventListener('focus', wake)
+        document.removeEventListener('visibilitychange', wake)
+      }
+    }, [adopt])
 
     return {
       items, setItems, activeId, setActiveId, index, setIndex,
@@ -2904,6 +3039,19 @@ function mergeStates(local, remote) {
       const [dictShow, setDictShow] = useState(() => (['both', 'en', 'zh'].includes(initial.dictShow) ? initial.dictShow : 'both'))
       const [dictCn, setDictCn] = useState(() => (['iciba', 'model'].includes(initial.dictCn) ? initial.dictCn : 'iciba'))
       const [dictEn, setDictEn] = useState(() => (['wordnet', 'wiktionary', 'collins', 'model'].includes(initial.dictEn) ? initial.dictEn : 'wordnet'))
+
+      /**
+       * Adopt the dictionary a tool call chose on the host.
+       *
+       * The panel keeps its own copy of this choice for the lookups it makes, so
+       * a `set_dictionary` call has to reach this state as well as the file —
+       * otherwise the panel answers with the dictionary it was showing before.
+       */
+      const applyHostDictionary = useCallback((held) => {
+        if (['both', 'en', 'zh'].includes(held?.show)) setDictShow(held.show)
+        if (['iciba', 'model'].includes(held?.chinese)) setDictCn(held.chinese)
+        if (['wordnet', 'wiktionary', 'collins', 'model'].includes(held?.english)) setDictEn(held.english)
+      }, [])
       /** Whether the host holds a Collins key; the key itself never reaches the browser. */
       const [collinsReady, setCollinsReady] = useState(false)
       const [collinsDraft, setCollinsDraft] = useState('')
@@ -2961,7 +3109,7 @@ function mergeStates(local, remote) {
         extraSources, activeSourceId, edgeA, edgeB, rate, loop, autoNext, autoScroll,
         showTranslation, translateSource, translateModel, columnWidth, fontScale,
         customPct, customPx, dictShow, dictCn, dictEn, dictModelCn, dictModelEn,
-        sections, bundledA, bundledB,
+        sections, bundledA, bundledB, onHostSettings: applyHostDictionary,
       })
 
       const rootRef = useRef(null)
@@ -4589,7 +4737,7 @@ function mergeStates(local, remote) {
     return {
       inject: ['slots', 'locale', 'sidebarRightTabs', 'sidebarRight'],
       /** Pure helpers, exposed so the panel's parsing can be tested without a browser. */
-      internals: { parseDialogue, splitSentences, hashText, titleFor, EDGE_VOICES, LOCAL_VOICES, SPEEDS, DICT, buildTimings, wordsOf, normalizeWord, mergeStates },
+      internals: { parseDialogue, splitSentences, hashText, titleFor, EDGE_VOICES, LOCAL_VOICES, SPEEDS, DICT, buildTimings, wordsOf, normalizeWord, mergeStates, sameLibrary, sync: SYNC },
 
       /**
        * Register the tab type, its body, the guide card, and the composer launcher.

@@ -123,6 +123,24 @@ Lookups are limited to the sentence being read, so a long article never pays for
   <img src="docs/words-2.png" width="640" alt="Saved words: revive expanded, Chinese senses by part of speech, English definitions with examples and speakers, the source sentence at the end"/>
 </p>
 
+## The model tool (`english_reader`)
+
+A conversation can read and edit this library without you opening the panel: list the words
+and dialogues, filter them by folder, add words, retitle or delete a dialogue, switch the
+dictionary — all through one tool.
+
+- **File by name**: `folder` takes a name (`25.12.1`) and makes it when it is new; `folderId`
+  takes one from `list_folders`, and a wrong id is an error that lists the folders there are.
+- **Batches**: `add_words`, `move_words` and `remove_words` take a list, so filing ten words
+  is one call rather than ten.
+- **One change per call**, reads apart from writes, so a listing tells the id before it is
+  needed.
+- **A filing survives a merge**: where an entry lives is settled by the moment it was last
+  moved, so a browser, a second panel and a tool call writing the same file cannot undo each
+  other's folders.
+- **No reload needed**: an open panel checks the host's revision every two seconds (and not
+  at all while hidden), so what a tool just wrote appears by itself.
+
 ## Translation sources
 
 | Source | Needs | Notes |

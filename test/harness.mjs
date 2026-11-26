@@ -39,6 +39,47 @@ const panelModule = await loadPanelModule()
 /** Pure helpers client.js exposes for exactly this: testing without a browser. */
 export const internals = panelModule.internals
 
+/**
+ * A small stand-in for the host's merge: union the lists by id and drop what a
+ * tombstone covers. The real rule lives in host/files.js and is tested there;
+ * this only has to keep the panel's own save from erasing a test's write.
+ */
+function mergeStore(current, incoming) {
+  if (incoming === null || typeof incoming !== 'object') return current
+  const base = current !== null && typeof current === 'object' ? current : {}
+  const gone = new Map([...(base.removed ?? []), ...(incoming.removed ?? [])]
+    .map((entry) => [`${entry.kind}:${entry.id}`, Number(entry.at ?? 0)]))
+  const union = (left, right, stamp) => {
+    const out = new Map()
+    for (const entry of [...(left ?? []), ...(right ?? [])]) {
+      const id = String(entry?.id ?? '')
+      if (id === '') continue
+      const held = out.get(id)
+      if (held === undefined || Number(entry[stamp] ?? 0) >= Number(held[stamp] ?? 0)) out.set(id, entry)
+    }
+    return [...out.values()]
+  }
+  return {
+    savedAt: Math.max(Number(base.savedAt ?? 0), Number(incoming.savedAt ?? 0)),
+    items: union(base.items, incoming.items, 'updatedAt')
+      .filter((entry) => (gone.get(`item:${entry.id}`) ?? 0) < Number(entry.updatedAt ?? 0)),
+    words: union(base.words, incoming.words, 'addedAt')
+      .filter((entry) => (gone.get(`word:${entry.id}`) ?? 0) < Number(entry.addedAt ?? 0)),
+    folders: union(base.folders, incoming.folders, 'createdAt'),
+    removed: [...gone.entries()].map(([key, at]) => {
+      const split = key.indexOf(':')
+      return { kind: key.slice(0, split), id: key.slice(split + 1), at }
+    }),
+    ...(incoming.settings === undefined ? (base.settings === undefined ? {} : { settings: base.settings }) : { settings: incoming.settings }),
+  }
+}
+
+/** Whether two lists hold the same ids, the way the host decides a save was fine. */
+function sameIds(left, right) {
+  const ids = (list) => [...(Array.isArray(list) ? list : [])].map((entry) => String(entry?.id ?? '')).sort()
+  return JSON.stringify(ids(left)) === JSON.stringify(ids(right))
+}
+
 /** Replace the global fetch for one panel, and record every request. */
 export function createHost(options = {}) {
   const dict = options.dict ?? {}
@@ -81,9 +122,25 @@ export function createHost(options = {}) {
       return json({ hasKey: host.collinsKey !== '', masked: host.collinsKey === '' ? '' : '••••' })
     }
     if (path === '/api-dsh-english-reader/store') {
-      if (method === 'GET') return json({ ok: true, state: host.store })
-      host.store = JSON.parse(String(init.body ?? '{}'))?.state ?? null
-      return json({ ok: true, savedAt: Date.now() })
+      if (method === 'GET') return json({ ok: true, state: host.store, revision: host.revision })
+      // The real host merges by id instead of replacing, so a test's write is
+      // not erased by the panel's next save — and a tombstone still wins.
+      const posted = JSON.parse(String(init.body ?? '{}'))?.state ?? null
+      host.store = mergeStore(host.store, posted)
+      host.revision = `r${host.writes += 1}`
+      return json({
+        ok: true,
+        savedAt: Date.now(),
+        revision: host.revision,
+        changed: !sameIds(host.store.items, posted?.items)
+          || !sameIds(host.store.words, posted?.words)
+          || !sameIds(host.store.folders, posted?.folders),
+      })
+    }
+    // A tool call writes the same file the panel reads; this is how a test says
+    // "somebody else changed the library" without going through the panel.
+    if (path === '/api-dsh-english-reader/store/revision') {
+      return json({ ok: true, revision: host.revision, savedAt: 0 })
     }
     if (path === '/api-dsh-english-reader/dict' && method === 'GET') {
       const word = (url.searchParams.get('word') ?? '').toLowerCase()
@@ -122,7 +179,15 @@ export function createHost(options = {}) {
     return json({ ok: false, error: `no mock for ${method} ${path}` }, { status: 404 })
   }
 
-  const host = { fetch, calls, json, store: options.store ?? null, collinsKey: options.collinsKey ?? '' }
+  const host = {
+    fetch, calls, json, store: options.store ?? null, revision: 'r0', writes: 0,
+    collinsKey: options.collinsKey ?? '',
+    /** Pretend a tool call wrote the library while the panel was open. */
+    write(state) {
+      host.store = state
+      host.revision = `r${host.writes += 1}`
+    },
+  }
   return host
 }
 
@@ -262,6 +327,10 @@ export async function launchPanel(options = {}) {
         await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)) })
       }
       throw new Error(`timed out after ${timeout}ms waiting for ${label}`)
+    },
+    /** Let real time pass, with React act around whatever the panel's timers do. */
+    async idle(ms) {
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, ms)) })
     },
     /** Let effects, promises and the panel's own timers run out. */
     async settle(rounds = 8) {

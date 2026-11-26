@@ -123,6 +123,16 @@ dsh plugin --profile web add link:./dsh-english-reader
   <img src="docs/words-2.png" width="640" alt="我的单词：展开 revive，中文按词性分行，英文释义带例句与小喇叭，末尾标注原句"/>
 </p>
 
+## 模型工具（`english_reader`）
+
+对话里的模型可以直接读写这份库，不需要你打开面板：查有哪些词和文章、按夹子筛选、加词、改标题、删词、换词典，都走同一个工具。
+
+- **按名字归类**：`folder` 收夹名（如 `25.12.1`），没有就顺手建出来；`folderId` 收 `list_folders` 给的 id，给错会报错并列出已有的夹子。
+- **批量**：`add_words` / `move_words` / `remove_words` 一次处理一批词，十个词是一次调用，不是十次。
+- **一次只改一件事**：读（`list_words`、`list_folders`、`list_dialogues`、`get_settings`、`define_word`）与写（`add_*`、`move_*`、`rename_dialogue`、`delete_dialogue`、`set_dictionary`、`normalize_words`）分开，写之前先列一次就知道 id。
+- **归类不会被覆盖**：夹子归属由「谁最后一次移动」的时间戳决定，浏览器、另一个面板、工具三方写同一份文件也不会互相抹掉。
+- **改完立刻生效**：面板每两秒问一次宿主的版本号（隐藏时暂停），工具刚写进去的词会自己出现在列表里，不用刷新页面。
+
 ## 翻译来源
 
 | 来源 | 需要 | 说明 |
