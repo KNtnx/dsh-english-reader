@@ -558,6 +558,11 @@ function sharedState(state) {
     words: state.words.slice(0, 2000),
     // Folders classify items and words; they are part of the shared library.
     folders: Array.isArray(state.folders) ? state.folders.slice(0, 200) : [],
+    // The dictionary choice is shared too. A panel that sends no settings keeps
+    // whatever the host already holds, so a tool write is not erased.
+    ...(state.settings !== null && typeof state.settings === 'object' && !Array.isArray(state.settings)
+      ? { settings: state.settings }
+      : {}),
     removed: Array.isArray(state.removed) ? state.removed.slice(-500) : [],
   };
 }

@@ -980,7 +980,18 @@ function mergeStates(local, remote) {
     const split = key.indexOf(':')
     return { kind: key.slice(0, split), id: key.slice(split + 1), at }
   }).sort((left, right) => left.at - right.at).slice(-TOMBSTONE_LIMIT)
-  return { ...base, items: keep(base.items, remote.items, 'item', 'updatedAt'), words, folders, removed: tombstones }
+  const merged = { ...base, items: keep(base.items, remote.items, 'item', 'updatedAt'), words, folders, removed: tombstones }
+  // The host may hold a dictionary choice made elsewhere (the english_reader tool
+  // writes it there). It is a setting, so the newest copy wins over the local one.
+  const dictionary = remote.settings !== null && typeof remote.settings === 'object'
+    ? remote.settings.dictionary
+    : null
+  if (dictionary !== null && typeof dictionary === 'object') {
+    if (['both', 'en', 'zh'].includes(dictionary.show)) merged.dictShow = dictionary.show
+    if (['iciba', 'model'].includes(dictionary.chinese)) merged.dictCn = dictionary.chinese
+    if (['wordnet', 'wiktionary', 'collins', 'model'].includes(dictionary.english)) merged.dictEn = dictionary.english
+  }
+  return merged
 }
 
 /** Format a byte count for the model card. */
@@ -3825,9 +3836,12 @@ function mergeStates(local, remote) {
         const sentence = card !== null && card.pinned === true
           ? ''
           : stateRef.current.sentences[stateRef.current.index]?.text ?? '';
+        // The row prints this; a trailing comma or full stop belongs to the
+        // sentence, not to the word.
+        const shown = String(entry.word).replace(/[^A-Za-z' \-]+$/u, '').trim() || entry.word;
         setWords((current) => {
           const rest = current.filter((item) => item.id !== id);
-          return [{ word: entry.word, id, context: sentence, addedAt: Date.now() }, ...rest].slice(0, 500);
+          return [{ word: shown, id, context: sentence, addedAt: Date.now() }, ...rest].slice(0, 500);
         });
       }, [card])
 

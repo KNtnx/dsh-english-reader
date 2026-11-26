@@ -412,3 +412,23 @@ test('a switched dictionary fills the saved words without opening them', async (
     await api.unmount()
   }
 })
+
+test('a saved word keeps its letters and drops the sentence punctuation', async () => {
+  // The list used to remember "consequences." and "crossroads." as written.
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    const span = api.qa('.er-w').find((node) => node.textContent === 'it.')
+    assert.ok(span !== undefined, 'the punctuated word is on screen')
+    span.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 300, clientY: 200 }))
+    await api.waitFor(() => api.q('.er-wordcard .er-add') !== null, { label: 'the save button' })
+    await api.click(api.q('.er-wordcard .er-add'))
+    await api.waitFor(() => api.q('.er-wordcard .er-add')?.textContent === 'Saved', { label: 'the saved state' })
+    await api.click(api.q('.er-wordcard .er-glyph[aria-label="Close"]'))
+    await api.click(api.q('button.er-glyph[title="Saved words"]'))
+    await api.waitFor(() => api.qa('.er-wrow').length === 1, { label: 'the saved word' })
+    assert.equal(api.qa('.er-entry-title')[0].textContent, 'it', 'the row shows the word, not the sentence mark')
+    assert.equal(api.qa('.er-wrow')[0].querySelector('.er-entry-title').textContent.includes('.'), false)
+  } finally {
+    await api.unmount()
+  }
+})
