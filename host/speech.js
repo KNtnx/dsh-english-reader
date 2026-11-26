@@ -202,6 +202,20 @@ export async function resolveModelPath(candidate) {
 /** One speech worker, started on first use. */
 export let worker = null;
 
+/**
+ * Stop the worker process, so the next synthesis starts a fresh one.
+ *
+ * `worker` is an exported binding: another module cannot set it, and doing so
+ * throws `TypeError: Assignment to constant variable` — which is what the unload
+ * path used to do after the first synthesis, taking the rest of the cleanup with
+ * it. The owner of the binding is this module.
+ */
+export function stopWorker() {
+  if (worker === null) return;
+  worker.kill();
+  worker = null;
+}
+
 /** Diagnostics from the worker's stderr, kept for failure messages. */
 export let workerStderr = '';
 

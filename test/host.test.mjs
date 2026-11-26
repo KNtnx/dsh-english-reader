@@ -453,3 +453,27 @@ async function revisionOfAnswer() {
   const { readStore } = await import('../host/files.js');
   return revisionOf(await readStore());
 }
+
+test('the plugin unloads after the speech worker started', async () => {
+  // `worker` is an exported binding. The unload path used to assign to it, which
+  // throws `TypeError: Assignment to constant variable` — but only once a first
+  // synthesis had started the child process, so every test that never spoke
+  // passed. Cleanup then aborted halfway, leaving the effect's disposal chain in
+  // the air.
+  const speech = await import('../host/speech.js');
+  const disposers = [];
+  const context = {
+    effect: (fn) => {
+      const dispose = fn();
+      if (typeof dispose === 'function') disposers.push(dispose);
+      return () => {};
+    },
+    webServer: { register: () => () => {} },
+  };
+  apply(context, {});
+  speech.startWorker();
+  assert.notEqual(speech.worker, null, 'the worker process is running');
+
+  assert.doesNotThrow(() => { for (const dispose of disposers) dispose(); }, 'unload must not throw');
+  assert.equal(speech.worker, null, 'the handle is cleared, so the next synthesis starts a new one');
+});

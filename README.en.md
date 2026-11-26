@@ -175,6 +175,8 @@ A translation is tagged with the source and model that produced it, so switching
 
 ## Development
 
+**Read [AGENTS.md](AGENTS.md) before changing code.** It is a routing table: it points at the eight module docs and 46 sub-module docs under `docs/modules/`, one per thing you might want to change. Read that page's invariants, change the code, then write the doc back.
+
 ```bash
 npm install                       # once: react, react-dom and jsdom are devDependencies
 npm test                          # the whole suite, about a second

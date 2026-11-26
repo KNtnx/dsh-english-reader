@@ -166,6 +166,8 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 ## 开发
 
+**要改代码先读 [AGENTS.md](AGENTS.md)**：那是一份目录，按「我要改什么 → 读哪篇」指向 `docs/modules/` 下的八个大模块与 46 篇小模块文档。改之前读那篇的「不变量」，改完回写它。
+
 ```bash
 npm install                       # 一次：react、react-dom、jsdom 是开发依赖
 npm test                          # 全部测试，约一秒

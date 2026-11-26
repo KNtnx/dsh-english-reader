@@ -3,7 +3,7 @@ import { EDGE_VOICE, LOCAL_VOICES, MAX_HEADER_MARKS, MAX_STORE_BYTES, MAX_TEXT, 
 import { findSource, mergeStore, publicSource, readCollinsKey, readSources, readStore, resolveKey, revisionOf, sameList, writeCollinsKey, writeSources, writeStore } from './files.js';
 import { defineWithModel, dictKey, lookUpChinese, lookUpCollins, lookUpWord, lookUpWordNet } from './dictionary.js';
 import { defaultModelRoute, secret, targetLanguage } from './model.js';
-import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startInstall, synthesize, synthesizeApi, worker } from './speech.js';
+import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startInstall, stopWorker, synthesize, synthesizeApi } from './speech.js';
 import { translateWithAzure, translateWithGoogle, translateWithModel, translateWithTencent, translateWithVolcengine } from './translate.js';
 
 /** Required host services: the HTTP route registry. */
@@ -973,10 +973,9 @@ export function apply(ctx, config) {
         entry.reject(new Error('plugin unloaded'));
       }
       pending.clear();
-      if (worker !== null) {
-        worker.kill();
-        worker = null;
-      }
+      // The worker's own module owns the handle: assigning to an imported
+      // binding from here throws, and used to abort the rest of the unload.
+      stopWorker();
     };
   }, 'english-reader: speech worker');
 
