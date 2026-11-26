@@ -1204,6 +1204,7 @@ function mergeStates(local, remote) {
           h('button', {
             type: 'button',
             className: `er-entry-del${confirm === selected.id ? ' er-entry-del-on' : ''}`,
+            'data-confirm-delete': 'folder',
             title: t('folders.delete'), 'aria-label': t('folders.delete'),
             onClick: () => { if (confirm === selected.id) drop(selected.id); else setConfirm(selected.id) },
           }, confirm === selected.id ? t('deleteConfirm') : glyph(ICON.close, 13))))
@@ -1276,6 +1277,7 @@ function mergeStates(local, remote) {
               h('button', {
                 type: 'button',
                 className: `er-entry-del${confirmDelete === item.id ? ' er-entry-del-on' : ''}`,
+                'data-confirm-delete': 'dialogue',
                 title: t('delete'), 'aria-label': t('delete'),
                 onClick: () => { if (confirmDelete === item.id) removeItem(item.id); else setConfirmDelete(item.id) },
               }, confirmDelete === item.id ? t('deleteConfirm') : glyph(ICON.close, 13)),
@@ -4109,6 +4111,28 @@ function mergeStates(local, remote) {
         })()
         return () => { cancelled = true }
       }, [view, dictShow, dictCn, dictEn, dictModelCn, dictModelEn, visibleWords, openWordId, resolveWord, entryKey])
+
+      /**
+       * A two-step delete stays armed only while it makes sense: one press arms it,
+       * the next completes it, a press anywhere else — or Escape, or four seconds —
+       * puts it back. It used to stay armed until another row was armed.
+       */
+      useEffect(() => {
+        if (confirmDelete === '' && confirmFolder === '') return undefined
+        const disarm = () => { setConfirmDelete(''); setConfirmFolder('') }
+        const onPress = (event) => {
+          // The press on the armed button itself belongs to its own click.
+          if (event.target?.closest?.('[data-confirm-delete]')) return
+          disarm()
+        }
+        const timer = setTimeout(disarm, 4000)
+        document.addEventListener('mousedown', onPress, true)
+        document.addEventListener('keydown', (event) => { if (event.key === 'Escape') disarm() }, true)
+        return () => {
+          clearTimeout(timer)
+          document.removeEventListener('mousedown', onPress, true)
+        }
+      }, [confirmDelete, confirmFolder])
 
       /** Open one saved word in place, resolving it through the current dictionary. */
       const closeWord = () => {

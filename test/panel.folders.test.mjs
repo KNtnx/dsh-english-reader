@@ -277,3 +277,36 @@ test('folders and the filing survive a reload of the same state', async () => {
     await again.unmount()
   }
 })
+test('an armed delete can be put down again', async () => {
+  // Reported: once a row said 确认删除？ it stayed armed until another row was
+  // armed or the dialogue was deleted — pressing elsewhere did nothing.
+  const api = await launchPanel({ state: STATE })
+  try {
+    await openLibrary(api)
+    await api.waitFor(() => api.qa('.er-entry-del').length > 0, { label: 'the delete control' })
+    const armed = () => api.q('.er-entry-del-on') !== null
+
+    await api.click(api.q('.er-entry-del'))
+    assert.equal(armed(), true, 'the first press arms the delete')
+
+    // A press somewhere else puts it back.
+    api.q('.er-index')?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }))
+    await api.settle()
+    assert.equal(armed(), false, 'pressing outside disarms it')
+
+    // So does Escape.
+    await api.click(api.q('.er-entry-del'))
+    await api.settle()
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await api.settle()
+    assert.equal(armed(), false, 'Escape disarms it')
+
+    // And the second press still deletes.
+    await api.click(api.q('.er-entry-del'))
+    await api.settle()
+    await api.click(api.q('.er-entry-del'))
+    await api.waitFor(() => api.qa('.er-entry-del').length === 1, { label: 'the dialogue to go' })
+  } finally {
+    await api.unmount()
+  }
+})
