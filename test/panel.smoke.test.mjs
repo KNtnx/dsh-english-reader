@@ -161,3 +161,26 @@ test('the panel renders in Chinese as well as English', async () => {
   }
 })
 
+
+test('the custom width field opens and applies a number', async () => {
+  // Reported from the reader: pressing 自定义 blanked the panel with
+  // "commitWidth is not defined" — the helper had been left in another view, and
+  // only this branch reached it.
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    const custom = api.qa('.er-display .er-seg-btn').find((node) => node.textContent === 'Custom')
+    assert.ok(custom !== undefined, 'the display bar has a custom width button')
+    await api.click(custom)
+    await api.waitFor(() => api.q('.er-display input') !== null, { label: 'the custom width field' })
+    // Re-query: the first render's node is replaced when the field mounts.
+    await api.type(api.q('.er-display input'), '55')
+    await api.key(api.q('.er-display input'), 'Enter')
+    await api.settle()
+    // Committing selects the custom width: its button reports checked state.
+    const current = api.qa('.er-display .er-seg-btn').find((node) => node.textContent === 'Custom')
+    assert.equal(current.getAttribute('aria-checked'), 'true', 'the typed width was applied')
+    assert.equal(api.q('.er-display input'), null, 'the field closed again')
+  } finally {
+    await api.unmount()
+  }
+})

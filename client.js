@@ -1931,6 +1931,12 @@ function mergeStates(local, remote) {
               ? null
               : h('button', { type: 'button', className: 'er-cta er-cta-quiet', onClick: () => { void playAt(index) } }, t('retry')))
 
+      /** Two segmented controls, in the same shape as the rest of the panel. */
+  }
+
+  /** The displayBar block, split out so the panel body stays readable. */
+  function renderDisplayBar(ui) {
+    const { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, columnWidth, customPct, customPx, dict, editingFont, editingWidth, fontDraft, fontScale, onKeyDown, setCard, setCardEntry, setCardState, setColumnWidth, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setQuery, setWidthDraft, t, view, widthDraft, windowWidth } = ui
       /** Commit whatever the custom field holds, ignoring nonsense. */
       const commitWidth = () => {
         const value = Math.round(Number(widthDraft))
@@ -1945,12 +1951,6 @@ function mergeStates(local, remote) {
         setCustomPx(Math.min(40, Math.max(11, value)))
       }
 
-      /** Two segmented controls, in the same shape as the rest of the panel. */
-  }
-
-  /** The displayBar block, split out so the panel body stays readable. */
-  function renderDisplayBar(ui) {
-    const { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, columnWidth, customPct, customPx, dict, editingFont, editingWidth, fontDraft, fontScale, onKeyDown, setCard, setCardEntry, setCardState, setColumnWidth, setCustomPct, setCustomPx, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setQuery, setWidthDraft, t, view, widthDraft, windowWidth } = ui
   return view === 'editor' ? null : h('div', { className: 'er-display' },
         editingWidth
           ? h('div', { className: 'er-custom' },
