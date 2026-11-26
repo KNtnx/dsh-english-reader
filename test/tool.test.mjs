@@ -288,3 +288,35 @@ test('a panel save and a tool call keep one library', async () => {
   assert.equal((await run({ action: 'get_settings' })).settings.dictionary.show, 'zh')
   assert.equal((await stored(home)).settings.dictionary.show, 'zh', 'the panel save kept the settings')
 })
+
+test('normalize_words strips punctuation and keeps the sentence it came from', async () => {
+  const home = await scratch()
+  const context = 'Put effort into fostering healthy relationships.'
+  await run({ action: 'add_word', word: 'fostering', context })
+  await run({ action: 'add_word', word: 'consequences.', context })
+  await run({ action: 'add_word', word: 'crossroads,', context: 'At the crossroads, we chose.' })
+
+  const before = await run({ action: 'list_words' })
+  const contextBefore = before.words.find((entry) => entry.id === 'consequences')?.context
+
+  const preview = await run({ action: 'normalize_words', dryRun: true })
+  assert.equal(preview.changed, 2, 'both punctuated words are reported')
+  assert.equal((await stored(home)).words.find((entry) => entry.id === 'consequences').word, 'consequences.', 'a dry run writes nothing')
+
+  const applied = await run({ action: 'normalize_words' })
+  assert.equal(applied.changed, 2)
+  const after = await run({ action: 'list_words' })
+  assert.deepEqual(after.words.map((entry) => entry.word).sort(), ['consequences', 'crossroads', 'fostering'])
+  assert.equal(after.words.find((entry) => entry.id === 'consequences').context, contextBefore, 'the 原文 is untouched')
+  assert.equal(after.words.find((entry) => entry.id === 'consequences').context, context)
+  assert.equal(after.words.find((entry) => entry.id === 'crossroads').context, 'At the crossroads, we chose.')
+
+  // A word that is nothing but punctuation is left alone, never emptied.
+  await run({ action: 'add_word', word: 'word' })
+  const library = await stored(home)
+  library.words.push({ word: '...', id: 'x', context: 'Kept as it was.', addedAt: 1 })
+  await (await import('../host/files.js')).writeStore(library)
+  const skipped = await run({ action: 'normalize_words' })
+  assert.equal(skipped.skipped.length, 1, 'the un-cleanable entry is reported, not deleted')
+  assert.equal((await stored(home)).words.find((entry) => entry.id === 'x').word, '...')
+})

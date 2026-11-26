@@ -32,6 +32,7 @@ export const ACTIONS = [
   'delete_dialogue',
   'get_settings',
   'set_dictionary',
+  'normalize_words',
 ];
 
 /** Modes the panel offers for showing a gloss: both languages, English or Chinese. */
@@ -242,6 +243,34 @@ const HANDLERS = {
     return { created: held === undefined, word: publicWord(kept), total: merged.words.length };
   },
 
+  /**
+   * Strip sentence punctuation from every saved word, keeping the sentence it was
+   * met in byte for byte. A word that would become empty is left alone.
+   */
+  async normalize_words(args) {
+    const library = await readLibrary()
+    const dryRun = args.dryRun === true
+    const cleaned = []
+    const skipped = []
+    for (const entry of library.words) {
+      const word = String(entry?.word ?? '')
+      const trimmed = word.replace(/[^A-Za-z' \-]+$/u, '').trim()
+      if (trimmed === word) continue
+      if (trimmed === '') { skipped.push({ word, id: entry.id, reason: 'nothing left after trimming' }); continue }
+      cleaned.push({ ...entry, word: trimmed, id: entry.id ?? wordId(trimmed) })
+    }
+    if (!dryRun && cleaned.length > 0) await writeLibrary(library, { words: cleaned })
+    const sample = cleaned.slice(0, 10).map((entry) => ({ before: library.words.find((w) => w === entry)?.word ?? null, after: entry.word, id: entry.id }))
+    return {
+      dryRun,
+      changed: cleaned.length,
+      skipped,
+      total: library.words.length,
+      words: (dryRun ? cleaned : library.words).slice(0, limitOf(args.limit)).map(publicWord),
+      sample,
+    }
+  },
+
   /** Drop one word, and remember the deletion so no browser syncs it back. */
   async remove_word(args) {
     const word = String(args.word ?? '').trim();
@@ -370,9 +399,10 @@ export function englishReaderTool() {
         action: {
           type: 'string',
           enum: ACTIONS,
-          description: 'What to do: list_words, add_word, remove_word, list_dialogues, add_dialogue, rename_dialogue, delete_dialogue, get_settings or set_dictionary.',
+          description: 'What to do: list_words, add_word, remove_word, list_dialogues, add_dialogue, rename_dialogue, delete_dialogue, get_settings, set_dictionary, or normalize_words (strip sentence punctuation from saved words, keeping their 原文).',
         },
         word: { type: 'string', description: 'add_word and remove_word: the word, in any case and with or without surrounding punctuation.' },
+        dryRun: { type: 'boolean', description: 'normalize_words: report what would change without writing.' },
         context: { type: 'string', description: 'add_word: the English sentence the word was met in; shown with the word in the panel.' },
         folderId: { type: 'string', description: 'add_word and add_dialogue: the folder to file the entry under; omit for unclassified.' },
         limit: { type: 'integer', description: 'list_words and list_dialogues: how many entries to return, 1 to 200; 50 when omitted.' },
