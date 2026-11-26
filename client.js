@@ -636,8 +636,7 @@ window.__ModuleLoader__.load({
         if (trimmed === '') { pendingBlank = true; continue }
         const match = trimmed.match(SPEAKER)
         entries.push({
-          follow: 'M12 4v9m0 0 3.5-3.5M12 13 8.5 9.5M5 18h14',
-      speaker: match === null ? null : match[1].trim(),
+          speaker: match === null ? null : match[1].trim(),
           text: match === null ? trimmed : match[2].trim(),
           hardBreak: pendingBlank,
         })
@@ -960,6 +959,8 @@ function mergeStates(local, remote) {
       prev: 'M7 5h2v14H7zm11 0v14l-9-7z',
       next: 'M15 5h2v14h-2zM6 5l9 7-9 7z',
       chain: 'M4 12h6v2H4zm10 0h6v2h-6zM9 7h6v2H9zm0 8h6v2H9z',
+      // An arrow landing on a line: the page follows the sentence being read.
+      follow: 'M12 4.5v8.5m0 0 3.2-3.2M12 13 8.8 9.8M5 18h14',
       // An open book with an A on the page: the dictionary, unmistakably.
       book: [
         'M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20',

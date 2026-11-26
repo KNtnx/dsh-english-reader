@@ -78,3 +78,13 @@ test('every class the panel applies has a rule', () => {
   const orphan = [...used].filter((name) => !defined.has(name))
   assert.deepEqual(orphan, [], `classes without a rule: ${orphan.join(', ')}`)
 })
+
+test('every icon the panel draws is defined', () => {
+  // The follow switch shipped with `ICON.follow` undefined: the button was there,
+  // the glyph was not — an empty <svg> looks like a missing feature.
+  const used = new Set([...SOURCE.matchAll(/ICON\.([A-Za-z_$][\w$]*)/g)].map((m) => m[1]))
+  const block = SOURCE.slice(SOURCE.indexOf('const ICON = {'), SOURCE.indexOf('\n    }', SOURCE.indexOf('const ICON = {')))
+  const defined = new Set([...block.matchAll(/^\s{6}([A-Za-z_$][\w$]*):/gm)].map((m) => m[1]))
+  const missing = [...used].filter((name) => !defined.has(name))
+  assert.deepEqual(missing, [], `icons used but not defined: ${missing.join(', ')}`)
+})
