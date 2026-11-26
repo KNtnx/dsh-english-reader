@@ -62,6 +62,7 @@ fails there rather than in the browser.
 | The floating word card stayed over the saved-words page | `panel.smoke.test.mjs` "leaving the dialogue closes the floating card" |
 | Deleted words and dialogues came back after a sync — union merge cannot delete | `host.test.mjs` "the host forgets what a panel deleted"; `internals.test.mjs` tombstone cases |
 | A folder assignment made by hand (or by the tool) was erased by a browser that never saw the move — the host merged on `addedAt`, which a move does not touch | `host.test.mjs` "a move survives a save that never saw it" and "the browser and the host settle a filing the same way" |
+| Unloading the plugin threw `Assignment to constant variable` — but only after a first synthesis had started the worker, so no test saw it (another module assigned to an ESM import binding) | `host.test.mjs` "the plugin unloads after the speech worker started" |
 | A tool call needed a page reload to show up — the panel read the library once, on mount | `panel.sync.test.mjs` (four cases: added, deleted, its own save is not news, a corrected save is read back) |
 | Sessions did not share words or dialogues — state lived in `localStorage` per origin | `host.test.mjs` "the library is shared through the host, not one browser"; `panel.dict.test.mjs` "a word saved in another session is already in the list" |
 | React key warning on every mount — array child without keys | `panel.smoke.test.mjs` "the panel mounts without console errors" |

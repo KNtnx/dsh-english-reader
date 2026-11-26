@@ -139,6 +139,7 @@ node --test --test-name-pattern "gloss" test/
 | 宿主没给 marks 时高亮错位 | `internals.test.mjs`「without marks the words are spread over the clip by length」 |
 | 手改/工具写的归类被浏览器旧副本抹掉 ← 宿主合并只看 `addedAt`，而移动不改它 | `host.test.mjs`「a move survives a save that never saw it」「the browser and the host settle a filing the same way」（`internals.test.mjs` 同一条跨端一致性用例） |
 | 工具写完必须刷新页面才看得见 ← 面板只在挂载时读一次库 | `panel.sync.test.mjs` 四条：新增、删除、自己的写不回头、被宿主纠正后立刻读回 |
+| 卸载插件抛 `Assignment to constant variable`（只有「合成过再卸载」才走到）← 别的模块给 ESM import 绑定赋值 | `host.test.mjs`「the plugin unloads after the speech worker started」 |
 | 同一毫秒内两次移动，先写入的赢 ← 时间戳相等时用 `>` 判新 | `host.test.mjs`「a move survives a save that never saw it」的 sameMoment 分支；`internals.test.mjs` 跨端一致性用例 |
 
 ---
