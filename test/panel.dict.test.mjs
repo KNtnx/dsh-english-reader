@@ -387,3 +387,28 @@ test('the card saves a punctuated word and takes it back', async () => {
     await api.unmount()
   }
 })
+
+test('a switched dictionary fills the saved words without opening them', async () => {
+  // Reported: after switching dictionary source every row read 未保存释义 until it
+  // was opened by hand. The list now warms its own glosses.
+  const state = {
+    ...FIXTURE_STATE,
+    dictShow: 'zh', dictCn: 'iciba', dictEn: 'wordnet',
+    words: [
+      { word: 'dream', id: 'dream', context: '', addedAt: 2 },
+      { word: 'revive', id: 'revive', context: '', addedAt: 1 },
+    ],
+    aiEntries: {},
+  }
+  const api = await launchPanel({ state })
+  try {
+    await api.click(api.q('button.er-glyph[title="Saved words"]'))
+    await api.waitFor(() => api.qa('.er-wrow').length === 2, { label: 'the saved words' })
+    await api.waitFor(() => api.qa('.er-entry-meta').every((node) => node.textContent !== 'No gloss saved'),
+      { label: 'glosses to arrive by themselves' })
+    assert.equal(api.qa('.er-entry-meta')[0].textContent, '梦（想）；理想')
+    assert.equal(api.qa('.er-entry-meta')[1].textContent, '使复活；使苏醒')
+  } finally {
+    await api.unmount()
+  }
+})

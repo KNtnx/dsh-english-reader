@@ -3838,6 +3838,40 @@ function mergeStates(local, remote) {
           || zh.toLowerCase().includes(needle)
       })
 
+      /**
+       * Rows print a gloss from the cache. When the dictionary changes, the cache
+       * no longer answers for the selected source, so every row would read
+       * 未保存释义 until it was opened by hand. Warm the visible rows instead,
+       * one at a time, and remember which word was asked for under which settings.
+       */
+      const warmedRef = useRef(new Set())
+      const aiEntriesRef = useRef(aiEntries)
+      aiEntriesRef.current = aiEntries
+      useEffect(() => {
+        if (view !== 'words') return undefined
+        const signature = (word) => `${entryKey(word, dictCn, dictModelCn)}|${entryKey(word, dictEn, dictModelEn)}`
+        const queue = visibleWords.filter((item) => {
+          // The open row resolves itself; warming it again would double the work.
+          if (item.id === openWordId) return false
+          const key = signature(item.word)
+          if (warmedRef.current.has(key)) return false
+          const hasChinese = aiEntriesRef.current[entryKey(item.word, dictCn, dictModelCn)] !== undefined
+          const hasEnglish = aiEntriesRef.current[entryKey(item.word, dictEn, dictModelEn)] !== undefined
+          // Only the slot the display mode shows is needed for the row itself.
+          return (dictShow !== 'en' && !hasChinese) || (dictShow !== 'zh' && !hasEnglish)
+        })
+        if (queue.length === 0) return undefined
+        let cancelled = false
+        void (async () => {
+          for (const item of queue) {
+            if (cancelled) return
+            warmedRef.current.add(signature(item.word))
+            try { await resolveWord(item.word) } catch { /* a miss keeps 未保存释义 */ }
+          }
+        })()
+        return () => { cancelled = true }
+      }, [view, dictShow, dictCn, dictEn, dictModelCn, dictModelEn, visibleWords, openWordId, resolveWord, entryKey])
+
       /** Open one saved word in place, resolving it through the current dictionary. */
       const closeWord = () => {
         openTokenRef.current += 1
