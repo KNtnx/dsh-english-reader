@@ -87,4 +87,11 @@ test('every icon the panel draws is defined', () => {
   const defined = new Set([...block.matchAll(/^\s{6}([A-Za-z_$][\w$]*):/gm)].map((m) => m[1]))
   const missing = [...used].filter((name) => !defined.has(name))
   assert.deepEqual(missing, [], `icons used but not defined: ${missing.join(', ')}`)
+  // glyph() fills its path and never strokes it: an open line-art path draws
+  // nothing at all, which reads as a missing icon.
+  const open = []
+  for (const m of block.matchAll(/^\s{6}([A-Za-z_$][\w$]*): '([^']*)'/gm)) {
+    if (!/[zZ]/.test(m[2])) open.push(m[1])
+  }
+  assert.deepEqual(open, [], `icon paths that would render empty: ${open.join(', ')}`)
 })
