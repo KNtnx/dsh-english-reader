@@ -72,6 +72,31 @@ test('every literal copy key the panel asks for exists', () => {
   assert.deepEqual(missing, [], `copy keys the panel asks for but the dictionary lacks: ${missing.join(', ')}`)
 })
 
+test('the reading text follows the host font instead of pinning a serif stack', () => {
+  // Reported from a claude-style panel: the Chinese translation line stayed in a
+  // Song typeface while the rest of the UI followed --dsw-font-family. The rule
+  // must inherit, so DSH's body font (and the user's font setting) reaches both
+  // the original and the translation — with or without claude-style installed.
+  // Match a top-level rule: `.er-passage-on .er-trans{…}` must not be taken for
+  // the rule that carries the layout and the font.
+  const ruleOf = (selector) => {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+    const found = new RegExp(`^${escaped}\\{([^}]*)\\}`, 'm').exec(SOURCE)
+    return found === null ? '' : found[0]
+  }
+  const translation = ruleOf('.er-trans')
+  assert.notEqual(translation, '', '.er-trans has a rule')
+  assert.match(translation, /font-family:inherit/,
+    'the translation inherits the host body font')
+  assert.doesNotMatch(translation, /Georgia|Songti|SimSun|STSong|serif/,
+    'no typeface is pinned, so a system fallback works too')
+
+  const original = ruleOf('.er-line')
+  assert.notEqual(original, '', '.er-line has a rule')
+  assert.doesNotMatch(original, /font-family:/,
+    'the original line inherits the host body font as well')
+})
+
 test('every class the panel applies has a rule', () => {
   const used = new Set(classNameText().match(/er-[a-z0-9-]+/g) ?? [])
   const defined = definedClasses()

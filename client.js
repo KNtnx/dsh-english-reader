@@ -4689,7 +4689,7 @@ function sameLibrary(left, right) {
 .er-w{border-radius:3px;padding:0.05em 0.1em;margin:-0.05em -0.1em;-webkit-box-decoration-break:clone;box-decoration-break:clone}
 .er-w-on{background:color-mix(in srgb, var(--dsw-alias-brand-primary,#4b7bec) 24%, transparent)}
 .er-passage-on .er-w-on{background:color-mix(in srgb, var(--dsw-alias-brand-primary,#4b7bec) 30%, transparent)}
-.er-trans{display:block;margin-top:1px;font-family:Georgia,'Songti SC','STSong','Noto Serif CJK SC','Source Han Serif SC','SimSun',serif;font-size:calc((var(--dsh-content-font-size-secondary,13px) - 0.5px) * var(--er-scale,1));line-height:1.66;letter-spacing:.01em;color:var(--dsw-alias-label-secondary,#666);overflow-wrap:anywhere}
+.er-trans{display:block;margin-top:1px;font-family:inherit;font-size:calc((var(--dsh-content-font-size-secondary,13px) - 0.5px) * var(--er-scale,1));line-height:1.66;letter-spacing:.01em;color:var(--dsw-alias-label-secondary,#666);overflow-wrap:anywhere}
 
 /* ---- transport -------------------------------------------------------- */
 .er-transport{display:flex;align-items:center;gap:2px;padding:5px 8px 5px 6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6))}

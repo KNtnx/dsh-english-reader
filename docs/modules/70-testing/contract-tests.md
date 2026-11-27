@@ -16,7 +16,7 @@
 
 | 文件 | 条数 | 输入 | 断言什么 |
 | --- | --- | --- | --- |
-| `copy.test.mjs` | 5 | `DICT` 两张表；源码里的 `t('key')`、`className:`、`ICON.name` 与 `ICON` 块 | 两种语言的 key 集合相同且都非空；`t()` 要的 key 两边都有（含插值拼出来的那几族）；用到的 `er-*` 类名都有规则；用到的图标都定义，且路径含 `z`/`Z`（只描边不闭合的路径渲染成空图） |
+| `copy.test.mjs` | 6 | `DICT` 两张表；源码里的 `t('key')`、`className:`、`ICON.name` 与 `ICON` 块 | 两种语言的 key 集合相同且都非空；`t()` 要的 key 两边都有（含插值拼出来的那几族）；用到的 `er-*` 类名都有规则；用到的图标都定义，且路径含 `z`/`Z`（只描边不闭合的路径渲染成空图） |
 | `views.test.mjs` | 1 | `ReaderBody` 的局部名、`const ui = {...}`、每个 `renderX(ui)` 的解构与函数体 | 视图用到的面板值必须来自 `ui` 或自己声明；视图解构了 `ui` 根本不带的名字也算错（`UNFED_ALLOWED` 只放行 `body`、`cardHeight` 这两个永远被内部遮蔽的名字） |
 | `scope.test.mjs` | 1 | 把 `client.js` 切成 token，取出每个顶层函数的声明与使用 | 在一个函数里声明、在另一个函数里使用、又不在工厂作用域的名字，一律报错 |
 | `docs.test.mjs` | —— | `docs/modules/**/*.md` + `AGENTS.md` | 大模块 README 的六个二级标题、小模块的七个；索引链到同目录每篇；`## 位置` 里引用的符号真能在该文件里 grep 到；不出现行号；单篇行数上限 |
