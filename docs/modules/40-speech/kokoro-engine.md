@@ -14,7 +14,7 @@ worker 里的本地路径：加载 Kokoro-82M（或用用户选定的目录）�
 | --- | --- | --- |
 | `{op:'local', text, voice, modelPath?}` | `loadKokoro(modelPath)` → `generate(text, {voice})` → `toWav16` | `{ok:true, type:'audio/wav', audio:'<base64>'}`（没有 marks） |
 | `{op:'preload', modelPath?}` | `loadKokoro(modelPath)`，只为把权重下下来/载入 | `{ok:true}`；过程中推 `progress` / `phase` / `cache` 事件 |
-| 引擎没装（可选依赖被跳过） | `import('kokoro-js')` 解析失败，`classifyEngineFailure` 标成 `engine-missing` | `{ok:false, code:'engine-missing', error:'local engine unavailable…'}`；同时推 `{event:'phase', phase:'error', code}` |
+| 引擎没装（可选 peer 未安装） | `import('kokoro-js')` 解析失败，`classifyEngineFailure` 标成 `engine-missing` | `{ok:false, code:'engine-missing', error:'local engine unavailable…'}`；同时推 `{event:'phase', phase:'error', code}` |
 
 环境变量在模块加载时读一次，默认值写在 `worker.mjs` 顶部：
 
@@ -31,7 +31,7 @@ worker 里的本地路径：加载 Kokoro-82M（或用用户选定的目录）�
 - **选目录就离线**：`modelPath !== ''` 时 `allowRemoteModels = false`，并设 `localModelPath = modelPath`；不选时允许远程，首次使用自动下载到 `cacheDir`。
 - **一个引擎只属于一个来源**：`kokoroSource` 记住当前加载的是哪个 id/目录；来源变了就重载，`kokoroPending` 保证并发请求只触发一次加载。
 - **加载失败要报事件**：`catch` 里推 `{event:'phase', phase:'error', error}`（引擎缺失时再加 `code:'engine-missing'`）再抛出；宿主据此把 `local.phase` 改成 `error`，把 `code` 写进 `local.code`。
-- **引擎是可选依赖，缺了不算崩溃**：`package.json` 把 `kokoro-js` 放在 `optionalDependencies`；它带入的 `onnxruntime-node` 在 CUDA 版本识别不了时 postinstall 会失败，pnpm 跳过这棵子树而不是回滚整笔安装。所以 `kokoro-js` 或其原生绑定解析不到是**预期状态**：`isEngineMissing` 认「模块缺失」与「原生绑定装不起来」两类，`classifyEngineFailure` 给它们一个共享的 `code`；Edge 主路径不受影响。
+- **引擎是可选 peer，缺了不算崩溃**：`package.json` 把 `kokoro-js` 放在 `peerDependencies` 并标 `optional`；pnpm 的 `autoInstallPeers: false` 让它默认不装，用户按 README 的命令自己装。所以 `kokoro-js` 或其原生绑定解析不到是**预期状态**：`isEngineMissing` 认「模块缺失」与「原生绑定装不起来」两类，`classifyEngineFailure` 给它们一个共享的 `code`；Edge 主路径不受影响。
 - **`toWav16` 是自制的 44 字节 WAV 头**：PCM16、单声道、`sampleRate * 2` 的 byteRate；负样本乘 `0x8000`、正样本乘 `0x7fff`（不对称，防溢出）。
 - **本地推理串行**：`localQueue` 把 `local` / `preload` 排成一条链；Edge 不排队，长下载不会卡住在线朗读。
 - **本地没有 marks**：`handle` 的 local 分支不回 marks，面板只能按句长均分估算。
@@ -48,7 +48,7 @@ worker 里的本地路径：加载 Kokoro-82M（或用用户选定的目录）�
 - **换模型 / dtype**：改 `host/constants.js` 的 `MODEL_ID`、`MODEL_DTYPE` 与 `MODEL_BYTES_APPROX`；worker 通过 env 收到，宿主不重启就仍是老进程。
 - **换 WAV 格式**（例如 float32）：`toWav16` 的头字段与写入循环一起改；面板只看 `content-type` 与浏览器能不能解。
 - **加 GPU**：`device: 'cpu'` 是硬编码；改成可配置时注意 `dtype` 与设备要匹配，并且 worker 崩溃会连累下一次 `ask`（懒重建）。
-- **依赖归属**：别把 `kokoro-js` 挪回 `dependencies`；一次失败的本地引擎安装会把整个插件回滚（`test/install.test.mjs` 守着）。装不上时的手动补救写在各语言 README 的「本地引擎与构建脚本」段。
+- **依赖归属**：`kokoro-js` 只能留在可选 peer，`dependencies` 会拖垮安装、`optionalDependencies` 仍会默认安装整棵树（`test/install.test.mjs` 守着）。装引擎的命令写在各语言 README 的「本地引擎与构建脚本」段。
 - **改进度聚合**：`onProgress` 只认 `progress` / `download` / `initiate`，其它状态（`done` 等）被忽略；`downloads` 在加载成功后清空，重下才重新计数。
 
 ## 读代码顺序

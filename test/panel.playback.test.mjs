@@ -56,9 +56,9 @@ test('a refused sentence is reported instead of silently doing nothing', async (
 })
 
 test('a local engine skipped at install time is named instead of blamed on the sentence', async () => {
-  // The engine is an optional dependency; when its native runtime fails to
-  // build, the plugin still installs and Edge still works. Pressing play on the
-  // local source must say that, not "the speech service refused this sentence".
+  // The engine is an optional peer and is not installed by default; Edge still
+  // works. Pressing play on the local source must say that, not "the speech
+  // service refused this sentence".
   const api = await launchPanel({
     state: { ...FIXTURE_STATE, activeSourceId: 'bundled' },
     host: {

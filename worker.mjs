@@ -51,13 +51,12 @@ function messageOf(error) {
 }
 
 /**
- * Whether a failure to load Kokoro means the optional dependency is absent.
+ * Whether a failure to load Kokoro means the optional engine is absent.
  *
- * `kokoro-js` is an optional dependency: when its native runtime
- * (`onnxruntime-node`) cannot be prepared at install time, pnpm skips that
- * subtree instead of failing the whole install. The engine then fails to load
- * with a module-resolution or native-binding error — not with a model error —
- * so it gets a code the host and the panel can explain.
+ * `kokoro-js` is an optional peer: pnpm installs it only when the user asks for
+ * the local model, so a missing module or native binding is the normal, expected
+ * state of a fresh install. It fails with a module-resolution or binding error —
+ * not with a model error — so it gets a code the host and the panel can explain.
  * @param {unknown} error - the load failure.
  * @returns {boolean} whether the engine was never installed.
  */
@@ -84,7 +83,7 @@ function classifyEngineFailure(error) {
   }
   const failure = error instanceof Error ? error : new Error(messageOf(error))
   failure.code = ENGINE_MISSING
-  failure.message = `local engine unavailable (kokoro-js is an optional dependency and was not installed): ${messageOf(error)}`
+  failure.message = `local engine unavailable (kokoro-js is an optional peer dependency and is not installed): ${messageOf(error)}`
   return { error: failure, code: ENGINE_MISSING }
 }
 

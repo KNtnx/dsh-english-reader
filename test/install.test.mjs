@@ -1,12 +1,13 @@
 /**
- * Installation contract: the local engine is optional.
+ * Installation contract: the local engine is opt-in.
  *
- * `kokoro-js` drags in `onnxruntime-node`, whose postinstall downloads a CUDA
- * build and fails when the machine's CUDA is newer than it knows. When that
- * happened, pnpm rolled the whole plugin installation back: a plugin that only
- * needed Edge voices could not be installed at all. These cases pin the fix —
- * the manifest keeps the engine optional, and a worker without it answers
- * `engine-missing` instead of dying or blaming the sentence.
+ * `kokoro-js` drags in `onnxruntime-node`, whose postinstall probes the local
+ * CUDA and fails when it is newer than it knows; `sharp` and `protobufjs` come
+ * with it. Installing that whole tree with the plugin made a CUDA-13 machine
+ * fail the plugin installation, and made every Edge-only user pay for it. These
+ * cases pin the fix — the manifest offers the engine as an *optional peer*, so
+ * pnpm (with `autoInstallPeers` off) installs none of it, and a worker without
+ * the engine answers `engine-missing` instead of dying or blaming the sentence.
  */
 
 import { test } from 'node:test'
@@ -81,11 +82,15 @@ async function talkToWorker(requests) {
   })
 }
 
-test('the local engine is optional, so a failed native build cannot roll back the install', () => {
+test('the local engine is opt-in, so its native runtime never joins a plugin install', () => {
   assert.equal(MANIFEST.dependencies?.['kokoro-js'], undefined,
     'kokoro-js must not be a hard dependency: its onnxruntime-node postinstall is what failed the install')
-  assert.match(String(MANIFEST.optionalDependencies?.['kokoro-js'] ?? ''), /^\^?1\./,
-    'the optional local engine keeps its 1.x range')
+  assert.equal(MANIFEST.optionalDependencies?.['kokoro-js'], undefined,
+    'optionalDependencies are still installed by default, so the engine must not live there either')
+  assert.match(String(MANIFEST.peerDependencies?.['kokoro-js'] ?? ''), /^\^?1\./,
+    'the engine is offered as a peer, with its 1.x range')
+  assert.equal(MANIFEST.peerDependenciesMeta?.['kokoro-js']?.optional, true,
+    'the peer has to be optional: pnpm must not auto-install it and the plugin must load without it')
   assert.match(String(MANIFEST.dependencies?.['msedge-tts'] ?? ''), /^\^?2\./,
     'the Edge engine stays a hard dependency: it is the path that has to keep working')
 })
@@ -99,7 +104,7 @@ test('a worker without the optional engine names the cause and keeps running', a
   const local = replies.get(1)
   assert.equal(local.ok, false, 'the local request cannot succeed without the engine')
   assert.equal(local.code, 'engine-missing', 'the host and the panel dispatch on this code')
-  assert.match(local.error, /optional dependency/i, 'the message says why the engine is missing')
+  assert.match(local.error, /optional peer dependency/i, 'the message says why the engine is missing')
   assert.match(local.error, /kokoro-js|onnxruntime/i, 'the message names what is missing')
   assert.equal(replies.get(2).code, undefined, 'an ordinary failure is not mislabelled as a missing engine')
   assert.equal(replies.get(3).ok, true, 'the worker survived the failed engine load')

@@ -70,9 +70,9 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 Replace `web` with your profile (Desktop builds usually use `desktop`), then restart `dsh web`.
 
-> Only `msedge-tts` is a required dependency; the local engine `kokoro-js` is **optional**. It brings in `onnxruntime-node`, whose install script probes the machine's CUDA and fails when it does not recognize the version (CUDA 13, for example) — that script used to roll the whole plugin installation back. It no longer can: a failed optional dependency costs at most `onnxruntime-node`, so the **local model** is unavailable while the plugin and the Edge voices install and work as usual.
+> Only `msedge-tts` is a required dependency. The local engine `kokoro-js` is an **optional peer**: it is not installed by default, so its whole tree (`kokoro-js → @huggingface/transformers → onnxruntime-node`, about 120 MB plus `sharp`/`protobufjs`) never joins a plugin installation — and the CUDA probe that always fails on CUDA 13 never runs. The default install is a few megabytes and the Edge voices work out of the box; to use the local model, add the engine with one command as described below.
 >
-> If DSH asks whether to allow install scripts, approving them completes the installation (`msedge-tts`'s script only checks the package manager; skipping it does not affect playback). To use the local model, bring the engine back as described under troubleshooting.
+> If DSH asks whether to allow install scripts, approve the `msedge-tts` one (it only checks the package manager); the plugin itself no longer ships any local-engine build script.
 
 ## Speech sources
 
@@ -81,7 +81,7 @@ Edge is built in; everything else is a source you add. Each can be renamed, edit
 | Source | Needs | Notes |
 | --- | --- | --- |
 | Microsoft Edge (online) | nothing | Neural voices, needs a network. Its word boundaries drive the highlight. |
-| Local model (Kokoro-82M) | an 89 MB download | Runs offline, or point it at a folder you already have (with `config.json` and `onnx/`). The engine is an optional dependency and may be skipped at install time. |
+| Local model (Kokoro-82M) | an 89 MB download + the engine | Runs offline, or point it at a folder you already have (with `config.json` and `onnx/`). The engine is an optional peer; install `kokoro-js` first as described below. |
 | Custom TTS API | endpoint, protocol, model, key | Three protocols: OpenAI-compatible `/audio/speech`, Alibaba DashScope native, Azure Speech (SSML). The domain alone is enough — paths are probed and remembered. |
 
 **Why the protocol is required**: one vendor's endpoints do not share a path or a body. Alibaba's OpenAI-compatible prefix serves chat and embeddings only; speech lives at the native `api/v1/services/audio/tts/SpeechSynthesizer` and returns a download URL.
@@ -166,7 +166,7 @@ A translation is tagged with the source and model that produced it, so switching
 | Symptom | Fix |
 | --- | --- |
 | Blank panel | Check the browser console; usually the client bundle did not load — restart `dsh web` |
-| "Local engine not installed" | The optional dependency was skipped at install time; see "The local engine and install scripts" below. Edge-only users can ignore this |
+| "Local engine not installed" | The engine is an optional peer and is not installed by default; see "The local engine and install scripts" below. Edge-only users can ignore this |
 | Local model stuck at "not downloaded" | Press Download and wait for 100%; models live in `$DSH_HOME/dsh-english-reader/models/` |
 | Custom API returns 400 / 401 | Use **Test** in the editor — it names the path and the original response. 401 means the vendor rejected the key |
 | A voice is ignored | Some vendors silently fall back on unknown voices; try a source that reports errors |
@@ -177,26 +177,25 @@ A translation is tagged with the source and model that produced it, so switching
 
 ### The local engine and install scripts
 
-`kokoro-js` is an optional dependency, and its native runtime `onnxruntime-node` probes the machine's CUDA during install. When that probe fails, pnpm drops the package and the panel says "local engine not installed". Two ways back:
+The local engine `kokoro-js` is an optional peer and is not installed with the plugin. To use the local model, run this in the profile directory:
 
-- **Recover now**: in the profile directory run
+```bash
+pnpm add --ignore-scripts kokoro-js@^1.2.1
+```
 
-  ```bash
-  pnpm add --ignore-scripts kokoro-js@^1.2.1
-  ```
+then restart `dsh web`. `--ignore-scripts` skips `onnxruntime-node`'s install script, which only fetches the CUDA acceleration libraries — the CPU binaries needed for inference already ship inside the package (verified: `import('kokoro-js')` and `onnxruntime-node.InferenceSession` both work). With a `link:` install, run `npm install --ignore-scripts` in the plugin directory instead.
 
-  then restart `dsh web`. `onnxruntime-node` ships its CPU binary inside the npm package, so skipping the build scripts does not affect local inference. This records `kokoro-js` as a direct dependency of the profile; with a `link:` install, run `npm install --ignore-scripts` in the plugin directory instead.
-- **Make it stick**: state all four build scripts explicitly in the profile's `pnpm-workspace.yaml` (take the versions from the install log), so a later install cannot drop the engine again:
+Once the engine is present, a later plain `pnpm install` stops with `ERR_PNPM_IGNORED_BUILDS` until the build scripts of `onnxruntime-node`, `sharp` and `protobufjs` are decided (that is a pending approval, not a crash). For a durable setup, state them in the profile's `pnpm-workspace.yaml` (take the versions from the install log):
 
-  ```yaml
-  allowBuilds:
-    msedge-tts@2.1.1: true
-    protobufjs@7.6.6: true
-    onnxruntime-node@1.21.0: false
-    sharp@0.34.5: false
-  ```
+```yaml
+allowBuilds:
+  msedge-tts@2.1.1: true
+  protobufjs@7.6.6: true
+  onnxruntime-node@1.21.0: false
+  sharp@0.34.5: false
+```
 
-  Approving `onnxruntime-node` is the harmful choice: on CUDA 13 that script always fails and pnpm then removes the package, while its prebuilt CPU binary was already in the package.
+Do not approve `onnxruntime-node`: on CUDA 13 that script always fails and pnpm then removes the package, while its prebuilt CPU binary was already in the package.
 
 ## Development
 

@@ -329,7 +329,7 @@ window.__ModuleLoader__.load({
         'local.cached': 'Downloaded · loads on the first sentence',
         'local.notReady': 'Not downloaded',
         'local.failed': 'Download failed',
-        'local.engineMissing': 'Local engine not installed (optional dependency). See the README troubleshooting table to add kokoro-js back, then restart. Edge voices are unaffected.',
+        'local.engineMissing': 'Local engine not installed (optional). In the profile directory run pnpm add --ignore-scripts kokoro-js@^1.2.1, then restart. Edge voices are unaffected.',
         'local.engineMissingShort': 'Engine not installed',
         'local.retry': 'Retry',
         'library.title': 'My dialogues',
@@ -574,7 +574,7 @@ window.__ModuleLoader__.load({
         'local.cached': '已下载 · 第一句时加载模型',
         'local.notReady': '未下载',
         'local.failed': '下载失败',
-        'local.engineMissing': '本地引擎未安装（可选依赖）。按 README「排错」补装 kokoro-js 后重启；Edge 语音不受影响。',
+        'local.engineMissing': '本地引擎未安装（可选提供）。在 profile 目录执行 pnpm add --ignore-scripts kokoro-js@^1.2.1 后重启；Edge 语音不受影响。',
         'local.engineMissingShort': '引擎未安装',
         'local.retry': '重试',
         'library.title': '我的对话',
@@ -2058,12 +2058,19 @@ function sameLibrary(left, right) {
                   h('span', { className: 'er-grow' }),
                   modelReady
                     ? h('span', { className: 'er-bundled-done' }, t('add.bundled.added'))
-                    : modelBusy || awaitBundled
-                      ? h('span', { className: 'er-bundled-done' }, `${Math.round((model?.progress ?? 0) * 100)}%`)
-                      : h('button', {
-                        type: 'button', className: 'er-bundled-act',
-                        onClick: () => { setAwaitBundled(true); installModel() },
-                      }, t('add.bundled.download'))))),
+                    : model?.code === 'engine-missing'
+                      ? h('span', { className: 'er-bundled-done' }, t('local.engineMissingShort'))
+                      : modelBusy || awaitBundled
+                        ? h('span', { className: 'er-bundled-done' }, `${Math.round((model?.progress ?? 0) * 100)}%`)
+                        : h('button', {
+                          type: 'button', className: 'er-bundled-act',
+                          onClick: () => { setAwaitBundled(true); installModel() },
+                        }, t('add.bundled.download'))),
+                  // Why the download link is gone: the optional engine is not
+                  // installed, so the model cannot be fetched until it is.
+                  model?.code === 'engine-missing'
+                    ? h('p', { className: 'er-fine er-bundled-hint' }, t('local.engineMissing'))
+                    : null)),
           addError === '' ? null : h('p', { className: 'er-dialog-error', role: 'alert' }, addError),
           h('div', { className: 'er-dialog-foot' },
             h('button', {
@@ -4654,7 +4661,8 @@ function sameLibrary(left, right) {
 .er-dialog-body{overflow-y:auto;padding:12px 14px 14px}
 .er-dialog-error{margin:0;padding:0 16px 10px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1.5px);line-height:1.5;text-align:center;color:var(--dsw-alias-state-error-primary,#c0392b);overflow-wrap:anywhere}
 .er-dialog-foot{display:flex;justify-content:flex-end;gap:6px;padding:0 14px 14px}
-.er-bundled{display:flex;align-items:center;gap:6px;margin-top:10px;padding:4px 7px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-xs,5px)}
+.er-bundled{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding:4px 7px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-xs,5px)}
+.er-bundled-hint{flex:1 0 100%;margin:0}
 .er-bundled-title{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1.5px);font-weight:500;white-space:nowrap}
 .er-bundled-meta{min-width:0;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2.5px);color:var(--dsw-alias-label-secondary,#888);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .er-bundled-act{flex:0 0 auto;padding:1px 5px;border:0;border-radius:4px;background:transparent;color:var(--dsw-alias-brand-primary,#3462c4);font:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);cursor:pointer;white-space:nowrap}

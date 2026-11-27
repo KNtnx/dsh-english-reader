@@ -13,7 +13,7 @@ while a feature was broken:
 | Every sentence failed to play (`502 speech worker stopped (code 1)`) | the host was split into `host/*.js` and the worker path became `host/worker.mjs`; every route test mocks speech |
 | The settings sheet crashed the panel (`modelLoaded is not defined`) | the view split lost values used only on the local-engine branch, and the suite runs the Edge branch |
 | A changed translation source kept showing the old translation | the stored translation was validated by hash and line count, not by source |
-| The plugin could not be installed at all (`ERR_PNPM_EXECUTOR_LIFECYCLE_SCRIPT_FAILED`) | a transitive native package (`onnxruntime-node`, under the optional local engine) failed its postinstall and pnpm rolled the package back; nothing read the manifest |
+| The plugin could not be installed at all (`ERR_PNPM_EXECUTOR_LIFECYCLE_SCRIPT_FAILED`) | a transitive native package (`onnxruntime-node`, pulled in by the local engine) failed its postinstall and pnpm rolled the package back; nothing read the manifest |
 
 So: a test that does not fail when the code is broken is worse than no test.
 
@@ -23,7 +23,7 @@ The browser procedure — the twelve-step pass that every release and every stru
 
 ```bash
 npm install     # once; react, react-dom and jsdom are devDependencies
-npm test        # every file under test/, ~3 s, 133 cases
+npm test        # every file under test/, ~3 s, 134 cases
 ```
 
 While fixing something, one file at a time:

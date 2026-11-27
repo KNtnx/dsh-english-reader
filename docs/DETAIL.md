@@ -129,10 +129,9 @@ Choosing **Local model** on the engine switch shows what is installed:
   restart it says *loads on the first sentence*: the weights are on disk, and the engine reads
   them the first time a sentence is asked for in this run, which takes a moment.
 
-The local engine is an **optional dependency**. If it was not installed with the plugin (for
-example, when the machine's CUDA version is outside what the `onnxruntime-node` prebuilt
-package knows), the panel says *local engine not installed* and tells you how to add it back;
-the Edge voices are unaffected.
+The local engine is an **optional peer** and is not installed with the plugin. To use the
+local model, install `kokoro-js` in the profile as the README describes; until then the panel
+says *local engine not installed* and shows the command. The Edge voices are unaffected.
 
 Switching engines pauses playback and forgets the sentence that was already loaded, so the
 next press fetches it again from the engine you switched to.

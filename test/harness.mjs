@@ -174,8 +174,8 @@ export function createHost(options = {}) {
           headers: { 'content-type': 'text/plain' },
         })
       }
-      // The optional local engine was skipped at install time; the host refuses
-      // only local synthesis this way and the panel has copy of its own for it.
+      // The optional local engine is not installed; the host refuses only local
+      // synthesis this way and the panel has copy of its own for it.
       if (options.tts === 'engine-missing') {
         return json({ code: 'engine-missing' }, { status: 503 })
       }

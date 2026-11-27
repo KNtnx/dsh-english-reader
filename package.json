@@ -27,8 +27,13 @@
   "dependencies": {
     "msedge-tts": "^2.1.1"
   },
-  "optionalDependencies": {
+  "peerDependencies": {
     "kokoro-js": "^1.2.1"
+  },
+  "peerDependenciesMeta": {
+    "kokoro-js": {
+      "optional": true
+    }
   },
   "dsh": {
     "bundle": {

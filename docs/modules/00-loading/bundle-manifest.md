@@ -7,7 +7,7 @@
 ## 位置
 
 - `package.json` :: `dsh`, `bundle`, `patch`, `client`, `platform`, `immediately`, `inject`
-- `package.json` :: `exports`, `files`, `dependencies`, `optionalDependencies`
+- `package.json` :: `exports`, `files`, `dependencies`, `peerDependencies`, `peerDependenciesMeta`
 - `cordis.patch.yml` :: `insert`, `english-reader`
 
 ## 输入 → 输出
@@ -20,7 +20,7 @@
 | `dsh.client.inject` | `dsh-client-ui-sidebar-right`、`dsh-client-ui-conversation` | 声明本 bundle 依赖这两个 UI 包的行（槽位提供方） |
 | `exports` | `.`、`./client`、`./locale/*.json`、`./icon` | 宿主 `import` 入口、客户端 bundle 入口、详情页资源 |
 | `files` | 见文件 | npm 打包白名单；漏一个就发布一个坏的包 |
-| `optionalDependencies` | `kokoro-js` | 本地语音引擎：装不上时 pnpm 跳过它，插件与 Edge 语音照常可用 |
+| `peerDependencies` + `peerDependenciesMeta.optional` | `kokoro-js` | 本地语音引擎：可选 peer，pnpm（`autoInstallPeers: false`）不会自动装；默认安装只有 `msedge-tts` |
 
 `cordis.patch.yml` 只做一件事：在 profile 的条目列表里 `insert` 一行 `english-reader`，`name` 指向本包，`config` 目前是空对象（宿主里的 `config` 参数就来自这里）。
 
@@ -30,7 +30,7 @@
 - `exports['./client']` 与 `files` 里的 `client.js` 必须同时存在，否则客户端表拿到一个空路径。
 - `files` 必须包含 `host`、`worker.mjs`、`docs`；`worker.mjs` 漏掉时宿主能启动、但每句语音都失败（历史上就是这一类事故）。
 - `cordis.patch.yml` 里的 `id` 必须唯一；与已有插件撞名会让整个 profile 起不来。
-- **本地引擎必须留在 `optionalDependencies`**：`kokoro-js` 带入的 `onnxruntime-node` 在 CUDA 版本识别不了时 postinstall 会失败；它一旦回到 `dependencies`，一次失败的本地引擎安装会回滚整个插件（`test/install.test.mjs` 守着）。
+- **本地引擎必须是可选 peer**：不能放 `dependencies`（会让装插件时跑 `onnxruntime-node` 的 CUDA 探测），也不能放 `optionalDependencies`（那仍会被默认安装，等于什么都没省）。`peerDependenciesMeta.optional` 让缺引擎合法，`engine-missing` 负责解释（`test/install.test.mjs` 守着）。
 
 守护：`test/host.test.mjs`「every module points at files that exist」检查模块里 `new URL(...)` 指向的文件真实存在；`test/copy.test.mjs` 检查前端资源。
 
@@ -43,7 +43,7 @@
 ## 改这里时
 
 - **加一个客户端槽位依赖**：在 `dsh.client.inject` 追加包名 → 在 `client.js` 的 `inject` 数组同步追加服务名 → 补 `test/panel.smoke.test.mjs` 的假 ctx。
-- **改运行时依赖**：硬依赖只留纯 JS 的 `msedge-tts`；带原生安装脚本的包（本地 TTS 这一类）放 `optionalDependencies`，并给缺依赖时写一条 `engine-missing` 文案。
+- **改运行时依赖**：硬依赖只留纯 JS 的 `msedge-tts`；带原生安装脚本或体积大的引擎（本地 TTS 这一类）用 `peerDependencies` + `peerDependenciesMeta.optional`，并给缺依赖时写一条 `engine-missing` 文案。
 - **发布一个 npm 版本**：确认 `files` 里有 `AGENTS.md` 与 `docs/modules`（没列进去就不会被打包）。
 - **改插件 id**：`cordis.patch.yml` 的 `id`、`package.json` 的 `name`、`client.js` 顶部四个常量（`TAB_ID`/`PANEL_ID`/`KIND`/`NS`）要一起改。
 

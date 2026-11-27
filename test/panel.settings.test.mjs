@@ -253,6 +253,36 @@ test('choosing a model directory from the add dialog shows the chosen path', asy
   }
 })
 
+test('a bundled model whose engine is missing offers the fix, not a dead download', async () => {
+  // Reported from the browser: the dialog showed "Download" and clicking it did
+  // nothing visible, because the worker cannot load the engine. The row must
+  // name the missing engine and the one command that installs it.
+  const api = await launchPanel({
+    state: FIXTURE_STATE,
+    host: {
+      localStatus: {
+        installed: false, phase: 'error', onDisk: false, dir: '/tmp/model',
+        code: 'engine-missing', error: 'local engine unavailable',
+      },
+    },
+  })
+  try {
+    await openSettings(api)
+    const addSource = api.qa('.er-add').find((node) => node.textContent.includes('Add a source'))
+    assert.ok(addSource !== undefined, 'the engine section offers to add a source')
+    await api.click(addSource)
+    const local = api.qa('.er-dialog .er-seg-btn').find((node) => node.textContent === 'Local model')
+    assert.ok(local !== undefined, 'the dialog offers a local model')
+    await api.click(local)
+    await api.settle()
+    assert.ok(api.q('.er-dialog .er-bundled-act') === null, 'the dead download link is not offered')
+    assert.match(api.text('.er-dialog .er-bundled-hint'), /pnpm add --ignore-scripts kokoro-js/,
+      'the row names the command that installs the engine')
+  } finally {
+    await api.unmount()
+  }
+})
+
 test('the settings capsule opens the card from the saved words page', async () => {
   // Reported as suspicious from the browser. The header is the same on every
   // view, so this branch is just openSettings() from a page that is not the
