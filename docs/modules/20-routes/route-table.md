@@ -2,7 +2,7 @@
 
 ## 职责
 
-宿主路由的注册表与安装过程：`ROUTES` 说清「哪个路径、哪种形态、哪个处理函数、用哪个标签卸载」，`bindRoute` 把插件 `config` 与宿主 `ctx` 预先绑进处理函数，`apply` 用 `ctx.effect` 逐条注册——插件卸载时 15 条一起被摘掉。
+宿主路由的注册表与安装过程：`ROUTES` 说清「哪个路径、哪种形态、哪个处理函数、用哪个标签卸载」，`bindRoute` 把插件 `config` 与宿主 `ctx` 预先绑进处理函数，`apply` 用 `ctx.effect` 逐条注册——插件卸载时 16 条一起被摘掉。
 
 ## 位置
 
@@ -14,7 +14,7 @@
 | 符号 | 作用 |
 | --- | --- |
 | `inject` | `['webServer']`：本模块唯一的硬依赖；没有它 `register` 无处可去 |
-| `ROUTES` | 15 个条目，字段是 `path` + （`resource` 或 `handler` 二选一）+ `effect` |
+| `ROUTES` | 16 个条目，字段是 `path` + （`resource` 或 `handler` 二选一）+ `effect` |
 | `bindRoute(route, config, ctx)` | 返回 `{kind: 'exact', path, resource}` 或 `{kind: 'exact', path, handler}`；`config`/`ctx` 在这一层被吃掉 |
 | `apply(ctx, config)` | 先一个 effect：建模型目录、探一次模型、卸载时清 `pending` 并 `worker.kill()`；再 `for (const route of ROUTES)` 每条一个 effect |
 | `sendJson(response, payload, status)` | node 风格响应：`application/json` + `cache-control: no-store` |
@@ -42,12 +42,12 @@
 - **加一条路由**：先在 `PATHS` 起名，再在 `ROUTES` 末尾加 `{path, resource|handler, effect}`。位置无所谓，匹配是精确的；但顺序与 `PATHS` 的书写顺序保持一致，读起来更省事。
 - **换一种形态**：`resource` → `handler` 时，处理函数要改成自己写响应头，`bindRoute` 不用动；反过来同理，但别让 `Response` 和 `response.end` 混用。
 - **加 config 键**：只在需要它的处理函数签名里补一个形参——`bindRoute` 已经按形态把 `config`/`ctx` 接在请求参数之后（`resource` 是第 2、3 位，`handler` 是第 3、4 位）；`cordis.patch.yml` 的 `config` 与 `test/host.test.mjs` 的假 context 要一起对。
-- **改注册方式**（例如挂到别的前缀、改成中间件）：`bindRoute` 是唯一出口，改它不必碰 15 个 handler；同时确认 `client.js` 的 15 个常量跟着改。
+- **改注册方式**（例如挂到别的前缀、改成中间件）：`bindRoute` 是唯一出口，改它不必碰 16 个 handler；同时确认 `client.js` 的 16 个常量跟着改。
 
 ## 读代码顺序
 
 1. 文件头的 `import`：一眼看出五组业务分别在哪个模块。
-2. `ROUTES`：15 条，配 `PATHS` 一起读，得到路径 ↔ 处理函数 ↔ 标签的完整映射。
+2. `ROUTES`：16 条，配 `PATHS` 一起读，得到路径 ↔ 处理函数 ↔ 标签的完整映射。
 3. `bindRoute`：为什么 `config`/`ctx` 不在 `ROUTES` 里。
 4. `apply`：worker 的 effect + 循环注册的 effect。
 5. 三条公共件 `sendJson`、`requestUrl`、`readBody`——后面每个 handler 都会用到它们。

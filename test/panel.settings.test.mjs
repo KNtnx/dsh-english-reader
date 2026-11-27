@@ -253,31 +253,44 @@ test('choosing a model directory from the add dialog shows the chosen path', asy
   }
 })
 
-test('a bundled model whose engine is missing offers the fix, not a dead download', async () => {
+test('downloading the bundled model asks before installing the engine', async () => {
   // Reported from the browser: the dialog showed "Download" and clicking it did
-  // nothing visible, because the worker cannot load the engine. The row must
-  // name the missing engine and the one command that installs it.
-  const api = await launchPanel({
-    state: FIXTURE_STATE,
-    host: {
-      localStatus: {
-        installed: false, phase: 'error', onDisk: false, dir: '/tmp/model',
-        code: 'engine-missing', error: 'local engine unavailable',
-      },
-    },
-  })
+  // nothing visible, because the engine is an optional peer and was not there.
+  // The row now installs it, but only after saying what will run and how big it is.
+  const api = await launchPanel({ state: FIXTURE_STATE, host: { engine: 'missing' } })
+  const prompt = () => api.q('[aria-label="Install the local engine"]')
+  const buttonIn = (dialog, label) => [...dialog.querySelectorAll('button')]
+    .find((node) => node.textContent === label)
   try {
     await openSettings(api)
     const addSource = api.qa('.er-add').find((node) => node.textContent.includes('Add a source'))
-    assert.ok(addSource !== undefined, 'the engine section offers to add a source')
     await api.click(addSource)
     const local = api.qa('.er-dialog .er-seg-btn').find((node) => node.textContent === 'Local model')
-    assert.ok(local !== undefined, 'the dialog offers a local model')
     await api.click(local)
     await api.settle()
-    assert.ok(api.q('.er-dialog .er-bundled-act') === null, 'the dead download link is not offered')
-    assert.match(api.text('.er-dialog .er-bundled-hint'), /pnpm add --ignore-scripts kokoro-js/,
-      'the row names the command that installs the engine')
+
+    const install = api.q('.er-dialog .er-bundled-act')
+    assert.ok(install !== null, 'the row offers to install the engine')
+    assert.equal(install.textContent, 'Install engine and download')
+    await api.click(install)
+    await api.waitFor(() => prompt() !== null, { label: 'the engine install prompt' })
+    assert.match(api.text('[aria-label="Install the local engine"] .er-dialog-body'),
+      /pnpm add --ignore-scripts kokoro-js@\^1\.2\.1/, 'the prompt names the command it will run')
+    assert.match(api.text('[aria-label="Install the local engine"] .er-dialog-body'),
+      /120 MB/, 'the prompt names the size')
+
+    // Cancelling decides nothing: no install, no download.
+    await api.click(buttonIn(prompt(), 'Cancel'))
+    await api.waitFor(() => prompt() === null, { label: 'the prompt to close' })
+    assert.equal(api.host.engineAsked, 0, 'cancel does not install the engine')
+    assert.equal(api.host.installAsked, 0, 'cancel does not download the model')
+
+    // Confirming installs the engine, and the model download follows by itself.
+    await api.click(api.q('.er-dialog .er-bundled-act'))
+    await api.waitFor(() => prompt() !== null, { label: 'the prompt again' })
+    await api.click(buttonIn(prompt(), 'Install and continue'))
+    await api.waitFor(() => api.host.engineAsked === 1, { label: 'the engine install request' })
+    await api.waitFor(() => api.host.installAsked === 1, { label: 'the model download after the engine' })
   } finally {
     await api.unmount()
   }

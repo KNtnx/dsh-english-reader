@@ -40,6 +40,7 @@ export const PATHS = {
   tts: '/api-dsh-english-reader/tts',
   status: '/api-dsh-english-reader/local/status',
   install: '/api-dsh-english-reader/local/install',
+  engine: '/api-dsh-english-reader/local/engine',
   ttsSources: '/api-dsh-english-reader/tts/sources',
   validate: '/api-dsh-english-reader/tts/validate',
   models: '/api-dsh-english-reader/tts/models',

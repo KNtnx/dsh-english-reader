@@ -22,6 +22,9 @@
 | `GET /tts/voices` | query `baseUrl`、`key`、`sourceId`、`protocol` | `{ok, voices, cloned, listed}`，每个音色带 `origin` |
 | `POST /tts/validate` | JSON `{kind:'local', modelPath}` 或 `{protocol, baseUrl, model, voice, key, sourceId}` | `{ok}` / `{ok:false, code}`，端点那条还带 `keySource` |
 | `GET /tts/models` | query `baseUrl`、`key`、`sourceId`、`protocol` | `{ok, models, filtered, total}`，失败给 `code` + `detail` |
+| `POST /local/engine` | 无 | `202 {started:true}`；安装进度在 `/local/status` 的 `engine.phase` |
+
+本地模型还有一条前置路由：`POST /local/engine` 只做一件事——让宿主按需安装 `kokoro-js`（`engine-install`），装完 `/local/status` 的 `engine.phase` 变 `ready`，面板才会去点 `/local/install`。
 
 `/tts` 的处理顺序不是按「便宜」排的：先定 `provider`（custom 时 `findSource`，找不到 503 `not-configured`）→ 组装目标（显式 `modelPath` 会先在盘上校验，非法就变 `null`）→ `ttsRefusal` 逐条拒绝：空文本 400 → 超 `MAX_TEXT` 413 → local 音色不在 `LOCAL_VOICES` 400 → 正在下载 503 `preparing` → `modelPath` 为 `null` 400 `bad-model-path` → 路径为空且没装模型 503 `not-installed` → Edge 音色不合 `EDGE_VOICE` 400。全部通过才进 `synthesize`；抛错统一 502，但**本地引擎未安装**（`engine-missing`）改回 503 `{code:'engine-missing'}`，本地还会把错误与 code 记进 `local.error` / `local.code`。
 
@@ -31,7 +34,8 @@
 - **省略字段 ≠ 清空字段**：`saveSource` 只覆盖传了的键。`key` 尤其如此——没传或传空串都沿用旧值，**所以这条路由没法清空 key**（要清就删源或直接改文件），换来的是「改个名字不会把密钥弄丢」。
 - **一次合成只用一个引擎**：`ttsProvider` 把未知的 `provider` 一律当 `edge`，不降级、不串联；`provider === 'custom'` 但源不存在的请求直接 503，不会偷偷用 Edge 读。
 - **下载中不排队**：`local.phase === 'downloading'` 时 `/tts` 立刻 503 `preparing`，不然面板会卡在一句读十秒的表象里。
-- **引擎缺失是 503 带 code，不是 502**：`speechFailure` 只对这一种 failure 改状态码，面板按 `code` 显示「本地引擎未安装」；其它合成失败仍是 502 纯文本，两者不要揉成一个。
+- **引擎缺失是 503 带 code，不是 502**：`speechFailure` 只对这一种 failure 改状态码，面板按 `code` 弹「安装引擎」确认；其它合成失败仍是 502 纯文本，两者不要揉成一个。
+- **装引擎与装模型是两条路**：`/local/engine` 走 `host/engine.js`（会跑包管理器），`/local/install` 只发 `preload` 下模型；不要在 `/local/install` 里偷偷装引擎。
 - **marks 可有可无**：超过 `MAX_HEADER_MARKS` 时丢 header 不报错，面板回落到按时长估算（见 `10-panel/word-alignment`）。
 - **`/tts/models` 会过滤**：端点列出的模型里 `isSpeechModel` 命中的优先，全都不像语音模型时才原样返回全部，并用 `filtered` 说明过滤发生过。
 

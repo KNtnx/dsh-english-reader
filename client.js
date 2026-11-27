@@ -20,6 +20,7 @@ window.__ModuleLoader__.load({
     const TTS_PATH = '/api-dsh-english-reader/tts'
     const LOCAL_STATUS = '/api-dsh-english-reader/local/status'
     const LOCAL_INSTALL = '/api-dsh-english-reader/local/install'
+    const LOCAL_ENGINE = '/api-dsh-english-reader/local/engine'
     const VALIDATE = '/api-dsh-english-reader/tts/validate'
     const MODELS = '/api-dsh-english-reader/tts/models'
     const VOICES = '/api-dsh-english-reader/tts/voices'
@@ -329,8 +330,14 @@ window.__ModuleLoader__.load({
         'local.cached': 'Downloaded · loads on the first sentence',
         'local.notReady': 'Not downloaded',
         'local.failed': 'Download failed',
-        'local.engineMissing': 'Local engine not installed (optional). In the profile directory run pnpm add --ignore-scripts kokoro-js@^1.2.1, then restart. Edge voices are unaffected.',
+        'local.engineMissing': 'The local engine is not installed (about 120 MB). Install it with the button below; Edge voices are unaffected.',
         'local.engineMissingShort': 'Engine not installed',
+        'engine.install.title': 'Install the local engine',
+        'engine.install.body': 'The local model needs kokoro-js and its ONNX runtime, about 120 MB. This runs once in your profile: pnpm add --ignore-scripts kokoro-js@^1.2.1. When it finishes, the model download (about 89 MB) starts.',
+        'engine.install.confirm': 'Install and continue',
+        'engine.installHint': 'Install engine and download',
+        'engine.installing': 'Installing the local engine… (about 120 MB)',
+        'engine.failed': 'The local engine could not be installed',
         'local.retry': 'Retry',
         'library.title': 'My dialogues',
         'library.new': 'New dialogue',
@@ -349,7 +356,7 @@ window.__ModuleLoader__.load({
         'folders.emptyWord': 'No word in this folder yet.',
         'error.notInstalled': 'The local model is not downloaded yet',
         'error.preparing': 'The local model is still being prepared — try again in a moment',
-        'error.engineMissing': 'The local voice engine is not installed — Edge voices still work',
+        'error.engineMissing': 'The local voice engine is not installed — install it from the local model card, or keep using Edge voices',
         'error.network': 'Could not reach the speech service',
         'error.server': 'The speech service refused this sentence',
         'error.tooLong': 'This sentence is too long to synthesize',
@@ -574,8 +581,14 @@ window.__ModuleLoader__.load({
         'local.cached': '已下载 · 第一句时加载模型',
         'local.notReady': '未下载',
         'local.failed': '下载失败',
-        'local.engineMissing': '本地引擎未安装（可选提供）。在 profile 目录执行 pnpm add --ignore-scripts kokoro-js@^1.2.1 后重启；Edge 语音不受影响。',
+        'local.engineMissing': '本地引擎未安装（约 120 MB）。点下面的按钮由插件安装；Edge 语音不受影响。',
         'local.engineMissingShort': '引擎未安装',
+        'engine.install.title': '安装本地引擎',
+        'engine.install.body': '本地模型需要 kokoro-js 和它的 ONNX 运行时，约 120 MB。确认后会在 profile 里执行一次：pnpm add --ignore-scripts kokoro-js@^1.2.1；完成后继续下载约 89 MB 的模型。',
+        'engine.install.confirm': '安装并继续',
+        'engine.installHint': '安装引擎并下载',
+        'engine.installing': '正在安装本地引擎…（约 120 MB）',
+        'engine.failed': '本地引擎安装失败',
         'local.retry': '重试',
         'library.title': '我的对话',
         'library.new': '新建对话',
@@ -594,7 +607,7 @@ window.__ModuleLoader__.load({
         'folders.emptyWord': '这个收藏夹里还没有单词。',
         'error.notInstalled': '本地模型还没下载',
         'error.preparing': '本地模型还在准备中，稍等一下再试',
-        'error.engineMissing': '本地语音引擎未安装，仍可使用 Edge 语音',
+        'error.engineMissing': '本地语音引擎未安装，在本地模型卡片里安装，或继续使用 Edge 语音',
         'error.network': '连不上语音服务',
         'error.server': '语音服务拒绝了这一句',
         'error.tooLong': '这一句太长，无法合成',
@@ -1641,7 +1654,7 @@ function sameLibrary(left, right) {
 
   /** The settingsCard block, split out so the panel body stays readable. */
   function renderSettingsCard(ui) {
-    const { activeSource, card, collinsDraft, collinsReady, collinsSaved, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, loadVoices, loadingVoices, model, modelChoices, modelOf, modelsByProvider, onKeyDown, provider, rememberVoice, routeOf, routes, saveCollinsKey, sections, setAddKind, setAddOpen, setCollinsDraft, setCollinsSaved, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, settingsOpen, sheetPlace, showTranslation, sources, t, toggle, toggleSection, toggleTranslation, total, translateError, translateModel, translateOptions, translateRoute, translateSource, voiceA, voiceB, voiceChoices, voices, voicesListed, modelReady, modelBusy, installModel, modelDir, renamingSource, modelLoaded, nameDraft, openSourceEditor, removeSource, removed, renameSource, setNameDraft, setRenamingSource, switchSource } = ui
+    const { activeSource, card, collinsDraft, collinsReady, collinsSaved, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, loadVoices, loadingVoices, model, modelChoices, modelOf, modelsByProvider, onKeyDown, provider, rememberVoice, routeOf, routes, saveCollinsKey, sections, setAddKind, setAddOpen, setCollinsDraft, setCollinsSaved, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, settingsOpen, sheetPlace, showTranslation, sources, t, toggle, toggleSection, toggleTranslation, total, translateError, translateModel, translateOptions, translateRoute, translateSource, voiceA, voiceB, voiceChoices, voices, voicesListed, modelReady, modelBusy, installModel, engineInstalling, modelDir, renamingSource, modelLoaded, nameDraft, openSourceEditor, removeSource, removed, renameSource, setNameDraft, setRenamingSource, switchSource } = ui
 
       // --------------------------------------------------------------- settings
       // Once the model is usable the facts already say so; this block is only the
@@ -1664,26 +1677,36 @@ function sameLibrary(left, right) {
               ? t('local.loading')
               : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) })))
           : h('div', { className: 'er-model' },
-            h('p', { className: 'er-fine' }, model?.code === 'engine-missing'
-              ? t('local.engineMissing')
-              : model?.phase === 'error'
-                ? `${t('local.failed')}${model?.error === '' ? '' : `: ${String(model.error).slice(0, 60)}`}`
-                : fill(t('local.desc'), { size: megabytes(model?.approximateBytes ?? model?.totalBytes) })),
+            h('p', { className: 'er-fine' }, engineInstalling
+              ? t('engine.installing')
+              : model?.engine?.phase === 'error'
+                ? `${t('engine.failed')}${model?.engine?.error === '' || model?.engine?.error === undefined ? '' : `: ${String(model.engine.error).slice(0, 80)}`}`
+                : model?.code === 'engine-missing'
+                  ? t('local.engineMissing')
+                  : model?.phase === 'error'
+                    ? `${t('local.failed')}${model?.error === '' ? '' : `: ${String(model.error).slice(0, 60)}`}`
+                    : fill(t('local.desc'), { size: megabytes(model?.approximateBytes ?? model?.totalBytes) })),
             h('button', {
               type: 'button', className: 'er-cta er-cta-quiet',
+              disabled: engineInstalling === true,
               onClick: installModel,
-            }, model?.phase === 'error' ? t('local.retry') : t('local.download')))
+            }, engineInstalling
+              ? t('engine.installing')
+              : model?.code === 'engine-missing'
+                ? t('engine.installHint')
+                : model?.phase === 'error' ? t('local.retry') : t('local.download')))
 
       const factRow = (label, value) => h('div', { className: 'er-fact' },
         h('span', { className: 'er-fact-label' }, label),
         h('span', { className: 'er-fact-value' }, value))
 
       const localState = model === null ? '…'
-        : modelBusy ? (model?.phase === 'loading' ? t('local.loading') : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) }))
-          : modelReady ? (modelLoaded ? t('local.ready') : t('local.cached'))
-            : model?.code === 'engine-missing' ? t('local.engineMissingShort')
-              : model?.phase === 'error' ? t('local.failed')
-                : t('local.notReady')
+        : engineInstalling ? t('engine.installing')
+          : modelBusy ? (model?.phase === 'loading' ? t('local.loading') : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) }))
+            : modelReady ? (modelLoaded ? t('local.ready') : t('local.cached'))
+              : model?.code === 'engine-missing' ? t('local.engineMissingShort')
+                : model?.phase === 'error' ? t('local.failed')
+                  : t('local.notReady')
 
       const sourceBackend = provider === 'edge' ? t('engine.backend.edge')
         : provider === 'local' ? t('engine.backend.local')
@@ -1932,7 +1955,7 @@ function sameLibrary(left, right) {
 
   /** The addDialog block, split out so the panel body stays readable. */
   function renderAddDialog(ui) {
-    const { addError, addKind, addOpen, addSource, apiModels, awaitBundled, draftBaseUrl, draftId, draftKey, draftModel, draftName, draftPath, draftProtocol, editingSource, fetchModels, fetchingModels, installModel, model, modelBusy, modelReady, panelHeight, pickModelDir, probe, setAddKind, setAddOpen, setApiModels, setAwaitBundled, setDraftBaseUrl, setDraftId, setDraftKey, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setProbe, status, t, testEndpoint, validating, card } = ui
+    const { addError, addKind, addOpen, addSource, apiModels, awaitBundled, draftBaseUrl, draftId, draftKey, draftModel, draftName, draftPath, draftProtocol, editingSource, fetchModels, fetchingModels, installModel, engineInstalling, model, modelBusy, modelReady, panelHeight, pickModelDir, probe, setAddKind, setAddOpen, setApiModels, setAwaitBundled, setDraftBaseUrl, setDraftId, setDraftKey, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setProbe, status, t, testEndpoint, validating, card } = ui
   return addOpen ? [
         h('div', { key: 'veil', className: 'er-veil', onMouseDown: () => setAddOpen(false) }),
         h('div', {
@@ -2058,19 +2081,27 @@ function sameLibrary(left, right) {
                   h('span', { className: 'er-grow' }),
                   modelReady
                     ? h('span', { className: 'er-bundled-done' }, t('add.bundled.added'))
-                    : model?.code === 'engine-missing'
-                      ? h('span', { className: 'er-bundled-done' }, t('local.engineMissingShort'))
-                      : modelBusy || awaitBundled
-                        ? h('span', { className: 'er-bundled-done' }, `${Math.round((model?.progress ?? 0) * 100)}%`)
-                        : h('button', {
+                    : engineInstalling
+                      ? h('span', { className: 'er-bundled-done' }, t('engine.installing'))
+                      : model?.code === 'engine-missing'
+                        ? h('button', {
                           type: 'button', className: 'er-bundled-act',
-                          onClick: () => { setAwaitBundled(true); installModel() },
-                        }, t('add.bundled.download'))),
-                  // Why the download link is gone: the optional engine is not
-                  // installed, so the model cannot be fetched until it is.
-                  model?.code === 'engine-missing'
-                    ? h('p', { className: 'er-fine er-bundled-hint' }, t('local.engineMissing'))
-                    : null)),
+                          onClick: () => { installModel() },
+                        }, t('engine.installHint'))
+                        : modelBusy || awaitBundled
+                          ? h('span', { className: 'er-bundled-done' }, `${Math.round((model?.progress ?? 0) * 100)}%`)
+                          : h('button', {
+                            type: 'button', className: 'er-bundled-act',
+                            onClick: () => { setAwaitBundled(true); installModel() },
+                          }, t('add.bundled.download'))),
+                  // Why a download link turns into an install button: the model
+                  // cannot be fetched until the optional engine is installed.
+                  model?.engine?.phase === 'error'
+                    ? h('p', { className: 'er-fine er-bundled-hint' },
+                      `${t('engine.failed')}${model?.engine?.error === '' || model?.engine?.error === undefined ? '' : `: ${String(model.engine.error).slice(0, 120)}`}`)
+                    : model?.code === 'engine-missing' && model?.engine?.phase !== 'installing'
+                      ? h('p', { className: 'er-fine er-bundled-hint' }, t('local.engineMissing'))
+                      : null)),
           addError === '' ? null : h('p', { className: 'er-dialog-error', role: 'alert' }, addError),
           h('div', { className: 'er-dialog-foot' },
             h('button', {
@@ -2091,6 +2122,43 @@ function sameLibrary(left, right) {
 
       /** One floating card serves the right-click lookup and the pinned dialog. */
       const cardHeight = Math.max(180, Math.min(panelHeight - 24, 420))
+  }
+
+  /**
+   * Ask before the plugin runs a package manager on the user's machine.
+   *
+   * The local model cannot be downloaded without the optional engine, so this
+   * is the one place the panel explains what will run, how large it is, and
+   * that cancelling leaves everything else (the Edge voices) working.
+   */
+  function renderEnginePrompt(ui) {
+    const { enginePrompt, installEngine, cancelEngine, t } = ui
+    return enginePrompt ? [
+      h('div', { key: 'engine-veil', className: 'er-veil', onMouseDown: cancelEngine }),
+      h('div', {
+        key: 'engine-dialog',
+        className: 'er-dialog',
+        role: 'dialog', 'aria-modal': 'true',
+        'aria-label': t('engine.install.title'),
+      },
+        h('div', { className: 'er-dialog-head' },
+          h('h2', { className: 'er-dialog-title' }, t('engine.install.title')),
+          h('button', {
+            type: 'button', className: 'er-glyph', 'aria-label': t('close'), title: t('close'),
+            onClick: cancelEngine,
+          }, glyph(ICON.close, 15))),
+        h('div', { className: 'er-dialog-body' },
+          h('p', { className: 'er-fine' }, t('engine.install.body'))),
+        h('div', { className: 'er-dialog-foot' },
+          h('button', {
+            type: 'button', className: 'er-cta er-cta-quiet',
+            onClick: cancelEngine,
+          }, t('cancel')),
+          h('button', {
+            type: 'button', className: 'er-cta er-cta-strong',
+            onClick: installEngine,
+          }, t('engine.install.confirm'))))
+    ] : null
   }
 
   /** The wordCard block, split out so the panel body stays readable. */
@@ -3122,6 +3190,8 @@ function sameLibrary(left, right) {
       }, [])
       const [sheetPlace, setSheetPlace] = useState(null)
       const [model, setModel] = useState(null)
+      /** The install prompt is a decision, not a status: the button opens it. */
+      const [enginePrompt, setEnginePrompt] = useState(false)
       /** Where the bundled model sits on disk, shown as the source's location. */
       const [modelDir, setModelDir] = useState('')
 
@@ -3352,6 +3422,7 @@ function sameLibrary(left, right) {
         && translationSourceOf(storedTranslation) === wantedSource
         ? storedTranslation : null
       const modelBusy = model !== null && (model.phase === 'downloading' || model.phase === 'loading')
+      const engineInstalling = model !== null && model.engine?.phase === 'installing'
 
 
       const sources = useMemo(() => [
@@ -3504,25 +3575,61 @@ function sameLibrary(left, right) {
         return () => { cancelled = true }
       }, [translateSource, translateRoute, translateOptions])
 
-      // Poll while the model is being fetched or loaded.
+      // Poll while the model is fetched/loaded, and while the engine installs.
       useEffect(() => {
-        if (provider !== 'local' || !modelBusy) return undefined
+        if (!engineInstalling && !(provider === 'local' && modelBusy)) return undefined
         const timer = setInterval(() => { void refreshModel() }, 800)
         return () => clearInterval(timer)
-      }, [provider, modelBusy, refreshModel])
+      }, [provider, modelBusy, engineInstalling, refreshModel])
 
       useEffect(() => {
         if (!modelReady) return
         setErrorKind((current) => (current === 'preparing' || current === 'notInstalled' || current === 'engineMissing' ? '' : current))
       }, [modelReady])
 
-      const installModel = useCallback(async () => {
+      const installModel = useCallback(async (options = {}) => {
+        // The engine is an optional peer, so the first download has to offer to
+        // install it rather than failing with a code the reader cannot act on.
+        if (options.engineChecked !== true && model?.code === 'engine-missing') {
+          setEnginePrompt(true)
+          return
+        }
         try {
           await fetch(LOCAL_INSTALL, { method: 'POST' })
         } catch { /* the status poll reports the failure */ }
         setModel((current) => (current === null ? current : { ...current, phase: 'downloading', installed: true }))
         void refreshModel()
+      }, [model?.code, refreshModel])
+
+      const engineResume = useRef(false)
+
+      /** The user confirmed: install the engine, then continue to the model. */
+      const installEngine = useCallback(async () => {
+        setEnginePrompt(false)
+        engineResume.current = true
+        setModel((current) => (current === null ? current : {
+          ...current,
+          engine: { phase: 'installing', error: '', log: '' },
+        }))
+        try {
+          await fetch(LOCAL_ENGINE, { method: 'POST' })
+        } catch { /* the status poll reports the failure */ }
+        void refreshModel()
       }, [refreshModel])
+
+      const cancelEngine = useCallback(() => setEnginePrompt(false), [])
+
+      // A confirmed engine install ends in either a model download or a reason.
+      useEffect(() => {
+        if (!engineResume.current) return
+        const phase = model?.engine?.phase
+        if (phase === 'ready') {
+          engineResume.current = false
+          void installModel({ engineChecked: true })
+        } else if (phase === 'error') {
+          engineResume.current = false
+        }
+      }, [model, installModel])
 
       const voiceFor = useCallback((sentence) => {
         const live = stateRef.current
@@ -4444,7 +4551,7 @@ function sameLibrary(left, right) {
         window.addEventListener('mouseup', end)
       }
 
-      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dialogueFolders, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineLabel, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, wordFolders, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef, autoScroll, setAutoScroll }
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, cancelEngine, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dialogueFolders, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineInstalling, engineLabel, enginePrompt, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installEngine, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, wordFolders, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef, autoScroll, setAutoScroll }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)
@@ -4464,6 +4571,7 @@ function sameLibrary(left, right) {
         body,
         renderSettingsCard(ui),
         renderAddDialog(ui),
+        renderEnginePrompt(ui),
         renderWordCard(ui),
         h('audio', { ref: audioRef }))
     }

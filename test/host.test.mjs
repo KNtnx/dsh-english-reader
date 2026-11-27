@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // The host keeps its files under DSH_HOME; point that at a scratch folder so a
@@ -23,6 +23,68 @@ const { apply } = await import('../index.js')
 const ORIGIN = 'http://127.0.0.1:3080'
 const PREFIX = '/api-dsh-english-reader'
 const BASE = `${ORIGIN}${PREFIX}`
+
+test('the engine is detected by the packages the worker resolves', async () => {
+  const engine = await import('../host/engine.js')
+  const root = await mkdtemp(join(tmpdir(), 'er-engine-'))
+  const previous = process.env.ER_ENGINE_ROOT
+  process.env.ER_ENGINE_ROOT = root
+  try {
+    assert.equal(engine.engineStatus().phase, 'missing', 'an empty profile has no engine')
+    for (const name of ['kokoro-js', '@huggingface/transformers', 'onnxruntime-node', 'sharp']) {
+      mkdirSync(join(root, 'node_modules', name), { recursive: true })
+      writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
+    }
+    assert.equal(engine.engineStatus().phase, 'ready', 'the worker can load all four packages')
+  } finally {
+    if (previous === undefined) delete process.env.ER_ENGINE_ROOT
+    else process.env.ER_ENGINE_ROOT = previous
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('the engine install skips build scripts in both install layouts', async () => {
+  const engine = await import('../host/engine.js')
+  const profile = await mkdtemp(join(tmpdir(), 'er-profile-'))
+  const linked = await mkdtemp(join(tmpdir(), 'er-linked-'))
+  try {
+    writeFileSync(join(profile, 'package.json'), '{}')
+    writeFileSync(join(profile, 'pnpm-workspace.yaml'), 'packages:\n  - .\n')
+    const managed = engine.installCommand(profile)
+    assert.equal(managed.command, 'pnpm', 'a profile is updated with the package manager DSH uses')
+    assert.deepEqual(managed.args, ['add', '--ignore-scripts', 'kokoro-js@^1.2.1'],
+      'the CUDA postinstall must never run')
+
+    const checkout = engine.installCommand(linked)
+    assert.ok(checkout.command !== 'pnpm', 'a linked checkout is not a pnpm project')
+    assert.ok(checkout.args.includes('--ignore-scripts'), 'npm must skip the same postinstall')
+    assert.ok(checkout.args.includes('--no-save'), 'a checkout manifest is left untouched')
+  } finally {
+    rmSync(profile, { recursive: true, force: true })
+    rmSync(linked, { recursive: true, force: true })
+  }
+})
+
+test('the profile build settings keep the engine packages after a later install', async () => {
+  const engine = await import('../host/engine.js')
+  const root = await mkdtemp(join(tmpdir(), 'er-builds-'))
+  try {
+    writeFileSync(join(root, 'pnpm-workspace.yaml'),
+      'packages:\n  - .\n\nallowBuilds:\n  msedge-tts@2.1.1: true\n  onnxruntime-node@1.21.0: true\n')
+    for (const [name, version] of [['onnxruntime-node', '1.21.0'], ['sharp', '0.34.5']]) {
+      mkdirSync(join(root, 'node_modules', name), { recursive: true })
+      writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version }))
+    }
+    assert.equal(engine.denyEngineBuilds(root), true, 'the settings file changes')
+    const text = readFileSync(join(root, 'pnpm-workspace.yaml'), 'utf8')
+    assert.match(text, /onnxruntime-node@1\.21\.0: false/, 'approving it would drop the package')
+    assert.match(text, /sharp@0\.34\.5: false/)
+    assert.match(text, /msedge-tts@2\.1\.1: true/, 'unrelated declarations stay')
+    assert.equal(engine.denyEngineBuilds(root), false, 'a second run is a no-op')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
 
 /** Register the plugin against a fake context and hand back its routes. */
 function registerRoutes(services = {}) {

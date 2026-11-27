@@ -7,7 +7,7 @@
 一个 DSH 插件，装起来以后在右侧栏给中文用户朗读英文文章/对话，并带一个可共享的单词库。它由**两个半边**组成，写同一份数据：
 
 - **浏览器半边** `client.js`（4,853 行，单 `__ModuleLoader__` 工厂，无构建步骤）；
-- **宿主半边** `index.js` → `host/*.js`（15 条 HTTP 路由 + 一个模型工具 + 一个语音子进程 `worker.mjs`）。
+- **宿主半边** `index.js` → `host/*.js`（16 条 HTTP 路由 + 一个模型工具 + 一个语音子进程 `worker.mjs`）。
 
 三处入口：右侧栏页签、左侧栏整页视图、输入框上方的小按钮。用户数据在宿主 `$DSH_HOME/dsh-english-reader/library.json`，界面状态在本机 `localStorage`。
 
@@ -15,7 +15,7 @@
 
 ```bash
 npm install                                    # react / react-dom / jsdom
-timeout 300 node --test test/                  # 全量，约 3 秒，134 项
+timeout 300 node --test test/                  # 全量，约 3 秒，137 项
 node --test test/panel.dict.test.mjs           # 单文件
 node --test --test-name-pattern "gloss" test/  # 单用例
 ```
@@ -52,8 +52,8 @@ node --test --test-name-pattern "gloss" test/  # 单用例
 | 前缀 | 大模块 | 一句话 |
 | --- | --- | --- |
 | `00` | [装载与契约](./docs/modules/00-loading/README.md) | 清单、入口、5 处客户端注册 |
-| `10` | [面板（浏览器半边）](./docs/modules/10-panel/README.md) | 文案、解析、三个 hook、13 个视图 |
-| `20` | [宿主路由](./docs/modules/20-routes/README.md) | 15 条路由，前端调用落到哪个函数 |
+| `10` | [面板（浏览器半边）](./docs/modules/10-panel/README.md) | 文案、解析、三个 hook、14 个视图 |
+| `20` | [宿主路由](./docs/modules/20-routes/README.md) | 16 条路由，前端调用落到哪个函数 |
 | `30` | [存储与合并](./docs/modules/30-store/README.md) | 一份 `library.json`，两个写者 |
 | `40` | [语音](./docs/modules/40-speech/README.md) | Edge 在线 / Kokoro 本地，都在子进程 |
 | `50` | [词典与翻译](./docs/modules/50-dictionary/README.md) | 4 个词典源、5 个翻译源 |
@@ -72,7 +72,7 @@ node --test --test-name-pattern "gloss" test/  # 单用例
 8. **文案有两处**：界面文案在 `client.js` 的 `DICT`，插件列表文案在 `locale/*.json`，key 两端必须一致。
 9. **测试必须绿**，而且新逻辑要有一条「回退它就变红」的用例；只跑 jsdom 不算验证过浏览器。
 10. **改代码必须改文档**：本文件保持目录地位，细节写进对应小模块文档。
-11. **本地引擎是可选的 peer**：`kokoro-js` 只能待在 `peerDependencies` + `peerDependenciesMeta.optional`，不能回到 `dependencies`，也不能放 `optionalDependencies`（后者仍会被默认安装）。它带入的 `onnxruntime-node` 在 CUDA 13 上装不上，默认安装必须只有 `msedge-tts`；缺引擎时 worker 回 `engine-missing`（`test/install.test.mjs` 守着）。
+11. **本地引擎是可选的 peer**：`kokoro-js` 只能待在 `peerDependencies` + `peerDependenciesMeta.optional`，不能回到 `dependencies`，也不能放 `optionalDependencies`（后者仍会被默认安装）。它带入的 `onnxruntime-node` 在 CUDA 13 上装不上，默认安装必须只有 `msedge-tts`；缺引擎时 worker 回 `engine-missing`；用户点「下载」时由 `host/engine.js` 确认后按需安装（`test/install.test.mjs` 与 `host.test.mjs` 守着）。
 
 ## 一次改动的流程
 

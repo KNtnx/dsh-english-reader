@@ -6,11 +6,11 @@
 
 ## 位置
 
-- `client.js` :: `renderHeader`, `renderDisplayBar`, `renderList`, `renderTransport`, `renderErrorBar`, `renderEditor`, `renderLibraryPage`, `renderWordsPage`, `renderSettingsCard`, `renderAddDialog`, `renderWordCard`, `renderFolderBar`, `renderFolderPicker`
+- `client.js` :: `renderHeader`, `renderDisplayBar`, `renderList`, `renderTransport`, `renderErrorBar`, `renderEditor`, `renderLibraryPage`, `renderWordsPage`, `renderSettingsCard`, `renderAddDialog`, `renderEnginePrompt`, `renderWordCard`, `renderFolderBar`, `renderFolderPicker`
 
 ## 输入 → 输出
 
-13 个函数，分成四组：
+14 个函数，分成五组：
 
 | 组 | 函数 | 负责 |
 | --- | --- | --- |
@@ -26,6 +26,7 @@
 | 共用控件 | `renderFolderPicker` | 行内的「移到哪个夹子」下拉 |
 | 卡片 | `renderSettingsCard` | 四段设置（引擎/音色/字典/翻译） |
 | 弹窗 | `renderAddDialog` | 添加音源对话框 |
+| 弹窗 | `renderEnginePrompt` | 下载模型前确认安装本地引擎（命令、体积、只装一次） |
 | 卡片 | `renderWordCard` | 右键词卡 |
 
 调用点集中在 `ReaderBody` 的 `body` 一行：`view === 'words'` / `'library'` / `'editor'` 各走一个页面视图，其余走「列表 + 错误条 + 播放条」的阅读页。

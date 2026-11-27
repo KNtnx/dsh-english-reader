@@ -129,9 +129,11 @@ Choosing **Local model** on the engine switch shows what is installed:
   restart it says *loads on the first sentence*: the weights are on disk, and the engine reads
   them the first time a sentence is asked for in this run, which takes a moment.
 
-The local engine is an **optional peer** and is not installed with the plugin. To use the
-local model, install `kokoro-js` in the profile as the README describes; until then the panel
-says *local engine not installed* and shows the command. The Edge voices are unaffected.
+The local engine is an **optional peer** and is not installed with the plugin. Pressing
+**Download and use** on the local-model card first explains that it will install the engine
+(about 120 MB, once) and then download the model (about 89 MB); confirming lets the plugin do
+both, while cancelling installs nothing. A failure shows its reason and the manual command.
+The Edge voices are unaffected.
 
 Switching engines pauses playback and forgets the sentence that was already loaded, so the
 next press fetches it again from the engine you switched to.

@@ -23,7 +23,7 @@ The browser procedure — the twelve-step pass that every release and every stru
 
 ```bash
 npm install     # once; react, react-dom and jsdom are devDependencies
-npm test        # every file under test/, ~3 s, 134 cases
+npm test        # every file under test/, ~3 s, 137 cases
 ```
 
 While fixing something, one file at a time:
@@ -66,6 +66,7 @@ fails there rather than in the browser.
 | Deleted words and dialogues came back after a sync — union merge cannot delete | `host.test.mjs` "the host forgets what a panel deleted"; `internals.test.mjs` tombstone cases |
 | A folder assignment made by hand (or by the tool) was erased by a browser that never saw the move — the host merged on `addedAt`, which a move does not touch | `host.test.mjs` "a move survives a save that never saw it" and "the browser and the host settle a filing the same way" |
 | Unloading the plugin threw `Assignment to constant variable` — but only after a first synthesis had started the worker, so no test saw it (another module assigned to an ESM import binding) | `host.test.mjs` "the plugin unloads after the speech worker started" |
+| Pressing Download only said the engine was missing — the optional peer is not installed with the plugin | `panel.settings.test.mjs` "downloading the bundled model asks before installing the engine"; `host.test.mjs` engine cases |
 | A tool call needed a page reload to show up — the panel read the library once, on mount | `panel.sync.test.mjs` (four cases: added, deleted, its own save is not news, a corrected save is read back) |
 | Sessions did not share words or dialogues — state lived in `localStorage` per origin | `host.test.mjs` "the library is shared through the host, not one browser"; `panel.dict.test.mjs` "a word saved in another session is already in the list" |
 | React key warning on every mount — array child without keys | `panel.smoke.test.mjs` "the panel mounts without console errors" |

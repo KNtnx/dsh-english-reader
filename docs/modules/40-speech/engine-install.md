@@ -1,0 +1,54 @@
+# engine-install
+
+## 职责
+
+把「本地引擎」从用户必须自己动手的 peer 依赖，变成点一下就能装上的东西，同时不把 120 MB 和 CUDA 探测塞回插件安装：面板先说明将执行什么，宿主用 `pnpm add --ignore-scripts` 装一次，worker 照常解析，模型下载接着开始。
+
+## 位置
+
+- `host/engine.js` :: `engineRoot`, `engineReady`, `engineStatus`, `installCommand`, `startEngineInstall`, `denyEngineBuilds`, `engine`, `ENGINE_SPEC`, `ENGINE_BYTES_APPROX`
+- `host/routes.js` :: `handleEngineInstall`
+- `host/constants.js` :: `PATHS.engine`
+- `host/speech.js` :: `localStatus`, `startEngineInstall`
+- `client.js` :: `installModel`, `installEngine`, `cancelEngine`, `renderEnginePrompt`, `engineInstalling`
+
+## 输入 → 输出
+
+| 触发 | 行为 | 结果 |
+| --- | --- | --- |
+| `POST /local/engine` | `startEngineInstall()` 起一次后台安装（已在装则忽略） | 202 `{started:true}`；进度看 `/local/status` 的 `engine.phase` |
+| `GET /local/status` | 检查 `engineRoot()` 下四个包是否齐全 | `engine: {phase: missing/installing/ready/error, error, log}` |
+| 面板「安装引擎并下载」 | 先弹确认（命令、约 120 MB、只装一次） | 取消：不发请求；确认：POST engine → 轮询 → `ready` 后 POST `/local/install` |
+
+## 不变量
+
+- **一律 `--ignore-scripts`**：装的是包内的 CPU 二进制；`onnxruntime-node` 的 postinstall 在 CUDA 13 上必然失败，跑一次就会把包弄没。
+- **安装位置跟着解析走**：普通安装装进 profile 根（worker 在 `node_modules` 里向上解析得到它）；`link:` 检出装进插件目录（profile 解析不到它）。`engineRoot()` 从插件目录向上找 `pnpm-workspace.yaml`，找不到就退回插件目录；`ER_ENGINE_ROOT` 只给测试用。
+- **状态以磁盘为准**：`engineStatus()` 每次都检查 `kokoro-js`、`@huggingface/transformers`、`onnxruntime-node`、`sharp` 四件套；`engine.phase` 只是安装中的临时标记，安装失败后用户手动修好，下一次 status 也会自愈。
+- **只装一次**：`startEngineInstall` 在 `installing` 时直接返回，确认框关闭后不会自己再弹；重启宿主后磁盘仍是唯一依据。
+- **失败可解释**：命令的非零退出、超时与 ENOENT 都写进 `engine.error`，面板展示并保留 README 里的手动命令。
+- **顺手关掉后续审批**：`denyEngineBuilds` 把 `onnxruntime-node@版本`、`sharp@版本` 写成 `false`，否则以后普通 `pnpm install` 会再问一次构建，批准就会把包丢掉；YAML 形状不认识时原样不动。
+- **只碰安装面**：会改 profile 的 `package.json`/lockfile（`pnpm add` 的副作用）与 `pnpm-workspace.yaml`；不碰 `$DSH_HOME` 的库、密钥与模型。
+
+## 相邻模块
+
+- 上游：`00-loading/bundle-manifest`（为什么引擎是可选 peer）、`40-speech/README`（语音总览）。
+- 下游：`worker.mjs` / `kokoro-engine`（解析同一棵树）、`local-model`（模型下载与状态机）、`20-routes/speech-routes`（路由参数与形状）。
+- 面板：`10-panel/views` 的设置卡片与 `renderAddDialog`、`10-panel/copy` 的确认文案。
+- 测试：`test/host.test.mjs`（检测、命令、审批）、`test/panel.settings.test.mjs`（确认 → 安装 → 下载）。
+
+## 改这里时
+
+- **换安装命令**：`installCommand` 与 README 的命令必须一起改；`--ignore-scripts` 不能丢。
+- **加一个装引擎的入口**：面板继续调 `installModel` 即可，确认框集中在 `renderEnginePrompt`；不要在别处直接 POST 引擎路由。
+- **改状态字段**：`engineStatus` 的 phase、`client.js` 的 `engineInstalling`、设置卡与添加来源对话框三处一起改，否则会「装着装着又变回未安装」。
+- **改审批策略**：`denyEngineBuilds` 针对 `onnxruntime-node` 与 `sharp` 两个版本化键；上游升级版本后要重新跑一次。
+
+## 读代码顺序
+
+1. `engineRoot` / `engineReady`：装在哪、怎么算装好。
+2. `installCommand` / `runInstall`：执行什么、日志与超时怎么处理。
+3. `startEngineInstall` 的状态机与 `engineStatus` 的磁盘判定。
+4. `denyEngineBuilds` 的 YAML 编辑。
+5. `client.js` 的 `installModel` → `renderEnginePrompt` → resume effect。
+6. `localStatus` 如何把引擎状态带给面板。

@@ -1,6 +1,6 @@
 # 70 测试与验收
 
-**一句话**：126 项代码用例分五层——安装契约、静态契约、纯逻辑、宿主路由、面板交互；另有一份文档契约（`test/docs.test.mjs`）把这套文档也当代码检查。面板层在 jsdom 里跑**真的** `client.js` 与真的 React，所以少一个 hook、错一个元素、漏一个参数都会在测试里红，而不是在用户面前炸。
+**一句话**：129 项代码用例分五层——安装契约、静态契约、纯逻辑、宿主路由、面板交互；另有一份文档契约（`test/docs.test.mjs`）把这套文档也当代码检查。面板层在 jsdom 里跑**真的** `client.js` 与真的 React，所以少一个 hook、错一个元素、漏一个参数都会在测试里红，而不是在用户面前炸。
 
 ## 一句话
 
@@ -38,11 +38,11 @@
 | 安装契约 | `install`(2) | 2 |
 | 静态契约 | `copy`(5)、`views`(1)、`scope`(1)，加 `host.test` 里两条契约用例 | 9 |
 | 纯逻辑 | `internals`(18) | 18 |
-| 宿主路由与工具 | `host`(18)、`tool`(20) | 38 |
+| 宿主路由与工具 | `host`(21)、`tool`(20) | 41 |
 | 面板交互 | `smoke`(10)、`dict`(19)、`translate`(4)、`playback`(7)、`settings`(7)、`folders`(7)、`sync`(5) | 59 |
-| 合计 | | **126** |
+| 合计 | | **129** |
 
-上表是 126 项代码用例的来源；`test/docs.test.mjs` 的 8 条只查文档，跑全量时合计 134 项。
+上表是 129 项代码用例的来源；`test/docs.test.mjs` 的 8 条只查文档，跑全量时合计 137 项。
 
 为什么这么分：越便宜、越靠前的层先跑——安装契约只读清单并空目录起一次 worker，静态扫描不执行代码，纯逻辑不建 DOM，宿主路由是 URL 上的纯函数，面板最贵但也最接近用户。前几层出问题时定位只要看一个函数；面板层出问题时它证明的是「用户那个动作」。
 
@@ -61,7 +61,7 @@ node --test test/
 
 ```bash
 npm install                                   # 一次性：react / react-dom / jsdom
-timeout 300 node --test test/                 # 全量，约 3 秒，134 项
+timeout 300 node --test test/                 # 全量，约 3 秒，137 项
 node --test test/panel.dict.test.mjs          # 单文件
 node --test --test-name-pattern "gloss" test/ # 单用例
 node --test test/docs.test.mjs                # 只跑文档契约

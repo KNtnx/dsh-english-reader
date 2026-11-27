@@ -3,6 +3,9 @@ import { readdir, stat } from 'node:fs/promises';
 import { dirname, isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { CACHE_LIMIT, LOCAL_VOICES, MODEL_BYTES_APPROX, MODEL_DTYPE, MODEL_ID, modelDir } from './constants.js';
+import { engineStatus, startEngineInstall } from './engine.js';
+
+export { startEngineInstall };
 
 /** @type {Map<string, {body: Buffer, type: string, marks: any[]}>} */
 export const cache = new Map();
@@ -358,6 +361,7 @@ export function ask(payload, timeoutMs) {
 /** Local provider state as the panel reads it. */
 export function localStatus() {
   const progress = local.total > 0 ? Math.min(1, local.loaded / local.total) : 0;
+  const engine = engineStatus();
   return {
     phase: local.phase,
     progress: Math.round(progress * 1000) / 1000,
@@ -366,8 +370,10 @@ export function localStatus() {
     approximateBytes: MODEL_BYTES_APPROX,
     file: local.file,
     error: local.error,
-    /** `engine-missing` when the optional local engine was never installed; else ''. */
-    code: local.code,
+    /** `engine-missing` while the optional engine is absent; cleared once it is back. */
+    code: engine.phase === 'ready' ? '' : local.code,
+    /** Whether the engine itself is installed, installing, or missing. */
+    engine,
     model: MODEL_ID,
     dtype: MODEL_DTYPE,
     /** Where the bundled model lives on disk, so the panel can show it. */

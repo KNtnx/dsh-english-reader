@@ -4,7 +4,7 @@
 
 ## 一句话
 
-- **负责**：provider 调度（`edge` / `local` / `custom`）、语音子进程的生命周期与协议、三种在线端点协议（OpenAI 兼容 / Azure / DashScope）、本地模型的下装与状态机、片段缓存与「上次哪个地址通了」的记忆。
+- **负责**：provider 调度（`edge` / `local` / `custom`）、语音子进程的生命周期与协议、三种在线端点协议（OpenAI 兼容 / Azure / DashScope）、本地引擎的按需安装、本地模型的下装与状态机、片段缓存与「上次哪个地址通了」的记忆。
 - **不负责**：HTTP 路由与参数校验（`20-routes/speech-routes`）、面板的播放状态机与逐词高亮（`10-panel/playback`）、源记录与密钥怎么落盘（`30-store/secrets`）。
 
 ## 代码入口
@@ -13,6 +13,7 @@
 | --- | --- | --- |
 | `host/speech.js` | `synthesize`、`synthesizeApi`、`cache`、`local` | 调度、缓存、本地模型状态；自带端点也在这里 |
 | `worker.mjs` | `handle`、`loadEdge`、`loadKokoro`、`toWav16`、`isEngineMissing`、`classifyEngineFailure` | 子进程：两个引擎，一行一个 JSON |
+| `host/engine.js` | `engineRoot`、`engineReady`、`engineStatus`、`startEngineInstall`、`installCommand`、`denyEngineBuilds` | 本地引擎的按需安装与状态 |
 | `host/constants.js` | `MODEL_ID`、`MODEL_DTYPE`、`CACHE_LIMIT`、`LOCAL_VOICES`、`EDGE_VOICE`、`PROTOCOLS` | 模型、上限、音色、协议白名单 |
 | `host/routes.js` | `handleTts`、`handleStatus`、`handleInstall` | 路由层：参数、拒绝码、`x-er-marks` 响应头 |
 | `client.js` | `clipFor`、`speak`、`installModel` | 面板：一句一请求；本地模型轮询状态 |
@@ -28,6 +29,7 @@
 | edge-engine | worker 侧 Edge：音频流与 WordBoundary marks | [edge-engine.md](./edge-engine.md) |
 | kokoro-engine | worker 侧 Kokoro：加载、WAV 封装、环境变量 | [kokoro-engine.md](./kokoro-engine.md) |
 | clip-cache | 片段缓存 + 「上次哪个地址通了」的记忆 | [clip-cache.md](./clip-cache.md) |
+| engine-install | 按需安装本地引擎：确认、`pnpm add --ignore-scripts`、审批收尾 | [engine-install.md](./engine-install.md) |
 
 ## 数据流
 
@@ -46,7 +48,7 @@ client.js  clipFor(sentence)
 
 音频以 `Response` 回去，marks 走响应头 `x-er-marks`（base64 JSON）；面板解码后交给 `10-panel/word-alignment`。
 
-本地分支还多一种结局：可选 peer 里的引擎没装（默认就是没装，见 `00-loading/bundle-manifest`）时 worker 回 `code:'engine-missing'`，`/tts` 变 503 而不是 502，面板显示「本地语音引擎未安装」并给出安装命令，Edge 不受影响。
+本地分支还多一种结局：可选 peer 里的引擎没装（默认就是没装，见 `00-loading/bundle-manifest`）时 worker 回 `code:'engine-missing'`，`/tts` 变 503 而不是 502；面板的「下载」按钮会先走 `engine-install` 的确认与安装，装好后再回到这里下载模型。Edge 不受影响。
 
 ## 常见改动
 
@@ -56,7 +58,7 @@ client.js  clipFor(sentence)
 | 换本地模型或精度 | `local-model` 与 `kokoro-engine` 引用的常量 | `MODEL_BYTES_APPROX`——面板显示的就是它 |
 | 端点地址总配不对 | `custom-endpoints` 的 `endpointCandidates` / `firstThatAnswers` | 面板「验证」按钮走的 `endpointVerdict` |
 | 同一句被反复合成 | `clip-cache` 的键与 `CACHE_LIMIT` | `test/panel.playback.test.mjs`（同句只请求一次） |
-| 本地引擎装不上 / 只要 Edge | 见 `00-loading/bundle-manifest` 与 README 的「本地引擎与构建脚本」：`kokoro-js` 留在可选 peer | `test/install.test.mjs` 两条 |
+| 本地引擎装不上 / 只要 Edge | `engine-install` 的 `installCommand` / `denyEngineBuilds`；`kokoro-js` 留在可选 peer | `test/host.test.mjs` 三条、`test/install.test.mjs` 两条 |
 | 逐词高亮错位 | `edge-engine` 的 marks 单位 + `10-panel/word-alignment` | 面板对 marks 缺失时的均分估算 |
 
 ## 风险与历史坑

@@ -26,7 +26,7 @@ absent ──install──► downloading ──► ready
    （任何一步失败 → error；再点 install 重来）
 ```
 
-`localStatus()` 的字段：`phase`、`progress`（0 到 1，总量未知时为 0）、`loadedBytes`、`totalBytes`、`approximateBytes`、`file`、`error`、`code`、`model`、`dtype`、`dir`、`voices`、`installed`。`installed` 为 `ready` / `cached` / `loading` / `downloading` 之一——含义是「不用再点下载」，`error` 不算。
+`localStatus()` 的字段：`phase`、`progress`（0 到 1，总量未知时为 0）、`loadedBytes`、`totalBytes`、`approximateBytes`、`file`、`error`、`code`、`engine`（可选引擎的 `missing/installing/ready/error`）、`model`、`dtype`、`dir`、`voices`、`installed`。`installed` 为 `ready` / `cached` / `loading` / `downloading` 之一——含义是「不用再点下载」，`error` 不算。
 
 状态机由 worker 事件喂：`progress` 一律写成 `downloading` 并累加字节；`phase: loading` 看 `onDisk` 决定显示「加载」还是「下载」；`phase: ready` 置 `ready`、`onDisk = true`、清零计数并清空错误；`phase: error` 写 `error`。宿主启动时收到的 `{event:'ready'}` 若发现 `phase === 'absent'` 且盘上有权重，就把状态改成 `cached`。
 
@@ -37,7 +37,7 @@ absent ──install──► downloading ──► ready
 - **`checkModelPath` 的判定是「引擎能读」**：绝对路径、是目录、有 `config.json`、且有 `onnx/` 或任一 `.onnx`。四道缺一不可。
 - **`hasModel` 只读一次盘**：`local.onDisk` 一旦不是 `null` 就永远返回它；运行中删掉权重不会被发现，只能重启宿主。
 - **进度只信 worker**：宿主不估算下载量，`progress` 是 `loaded / total` 四舍五入到三位；`total` 为 0 时进度是 0。
-- **引擎缺失有自己的一栏**：引擎是可选 peer，默认就没装；`applyEvent` 把事件里的 `code` 写进 `local.code`，`startInstall` 的 catch 从 error 上取同一个值，`localStatus()` 原样给面板。「没装引擎」与「没下模型」是两回事，面板用 `local.engineMissing` 文案区分并给出安装命令。
+- **引擎缺失有自己的一栏**：引擎是可选 peer，默认就没装；`applyEvent` 把事件里的 `code` 写进 `local.code`，`startInstall` 的 catch 从 error 上取同一个值，`localStatus()` 原样给面板，`engine` 一栏由 `engine-install` 提供。「没装引擎」与「没下模型」是两回事，面板用 `local.engineMissing` 与安装按钮区分。
 - **本地合成的三道拒绝在上游**：`20-routes/speech-routes` 的 `ttsRefusal` 用这里的函数判定——下载中回 503 `preparing`、坏路径回 400 `bad-model-path`、没装回 503 `not-installed`。
 - **返回形状以代码为准**：`checkModelPath` 的 JSDoc 还写着 `string|null`，实际返回的是判定对象；改签名时先改 JSDoc。
 

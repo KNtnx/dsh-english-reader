@@ -2,7 +2,7 @@
 
 ## 职责
 
-宿主所有「写死的东西」的出处：15 条路由的路径、五个数据目录/文件的路径函数、以及各个 handler 与子进程共用的上限。改一个路径或一个上限，只需要在这里改一次——前提是调用方都用了这些名字而不是自己拼。
+宿主所有「写死的东西」的出处：16 条路由的路径、五个数据目录/文件的路径函数、以及各个 handler 与子进程共用的上限。改一个路径或一个上限，只需要在这里改一次——前提是调用方都用了这些名字而不是自己拼。
 
 ## 位置
 
@@ -13,7 +13,7 @@
 
 | 符号 | 值 / 形状 | 谁在用 |
 | --- | --- | --- |
-| `PATHS` | 15 个键，全部以 `/api-dsh-english-reader` 开头 | `host/routes.js` 的 `ROUTES` |
+| `PATHS` | 16 个键，全部以 `/api-dsh-english-reader` 开头 | `host/routes.js` 的 `ROUTES` |
 | `dshHome()` | `process.env.DSH_HOME`，缺省 `~/.dsh` | 下面四个路径函数 |
 | `modelDir()` | `<DSH_HOME>/dsh-english-reader/models` | 本地模型、`40-speech`、`/local/install` |
 | `sourcesFile()` | `<DSH_HOME>/dsh-english-reader/sources.json` | `readSources` / `writeSources` |
@@ -32,7 +32,7 @@
 ## 不变量
 
 - **路径一律经函数取**：`dshHome()` 每次调用重算环境变量，所以测试把 `DSH_HOME` 指到临时目录后立刻生效（`test/host.test.mjs` 就是这么隔离的）。别在别处 `join(homedir(), …)` 或拼字符串。
-- **`PATHS` 一项对应一条路由**：`ROUTES` 里 15 条全部引用 `PATHS.xxx`，没有裸字符串。`test/host.test.mjs`「every route the panel calls exists on the host」用正则扫 `client.js` 与 `host/*.js` 的路径，双向对齐。
+- **`PATHS` 一项对应一条路由**：`ROUTES` 里 16 条全部引用 `PATHS.xxx`，没有裸字符串。`test/host.test.mjs`「every route the panel calls exists on the host」用正则扫 `client.js` 与 `host/*.js` 的路径，双向对齐。
 - **上限有两份，越靠前越严**：面板侧先截（库 60 篇、夹子 200、墓碑 500），宿主侧再截一次（`items` 500、`words` 2000、`folders` 200、墓碑 500）。改一边不改另一边，得到的不是报错，而是「悄悄少一条」——放宽宿主侧不会让界面多存，收紧宿主侧才会先丢。
 - **`EDGE_VOICE` 是正则不是名单**：形如 `zh-CN-XiaoxiaoNeural`；它只管宿主的拒绝逻辑，面板另有一份 `EDGE_VOICES` 名单用于下拉——两处不一致时表现为「界面能选、宿主拒绝」。
 - **`PROTOCOLS` 决定存储合法性**：`isSource` 用它过滤 `sources.json`；手工编辑过的文件里协议写错，那条源会**静默消失**。

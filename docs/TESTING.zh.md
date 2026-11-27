@@ -84,7 +84,7 @@ bsk_inspect screenshot              # 三张：阅读页、设置卡片、我的
 
 ```bash
 npm install                 # 一次性：react / react-dom / jsdom 是 devDependencies
-timeout 300 node --test test/        # 全套，约 3 秒，134 项
+timeout 300 node --test test/        # 全套，约 3 秒，137 项
 ```
 
 单文件、单用例：
@@ -141,6 +141,7 @@ node --test --test-name-pattern "gloss" test/
 | 工具写完必须刷新页面才看得见 ← 面板只在挂载时读一次库 | `panel.sync.test.mjs` 四条：新增、删除、自己的写不回头、被宿主纠正后立刻读回 |
 | 卸载插件抛 `Assignment to constant variable`（只有「合成过再卸载」才走到）← 别的模块给 ESM import 绑定赋值 | `host.test.mjs`「the plugin unloads after the speech worker started」 |
 | 插件整笔装不上（`ERR_PNPM_EXECUTOR_LIFECYCLE_SCRIPT_FAILED`）← 本地引擎带入的 `onnxruntime-node` 在 CUDA 13 上 postinstall 失败，pnpm 回滚整包 | `install.test.mjs` 两条；`panel.playback.test.mjs`「a local engine skipped at install time is named instead of blamed on the sentence」 |
+| 点「下载并使用」只提示引擎未装、模型下不了 ← 引擎是可选 peer，插件不再自带 | `panel.settings.test.mjs`「downloading the bundled model asks before installing the engine」；`host.test.mjs` 三条引擎用例 |
 | 同一毫秒内两次移动，先写入的赢 ← 时间戳相等时用 `>` 判新 | `host.test.mjs`「a move survives a save that never saw it」的 sameMoment 分支；`internals.test.mjs` 跨端一致性用例 |
 
 ---

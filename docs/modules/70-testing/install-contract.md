@@ -24,13 +24,13 @@
 
 - **空目录现在就是默认状态**：`kokoro-js` 是可选 peer，pnpm 在 `autoInstallPeers: false`（DSH profile 一直这么配）下不会装它；复制 worker 到空目录正好复现「用户还没装引擎」。不要在仓库内建这个目录——仓库自己的 `node_modules` 会让引擎被解析到。
 - **两条用例都必须能红**：把 `kokoro-js` 挪回 `dependencies` 或 `optionalDependencies`，第一条红；去掉 `classifyEngineFailure` 写的 `code`，第二条红。
-- **它不负责 pnpm 的行为**：peer 是否被自动安装取决于 profile 的 `autoInstallPeers`，引擎装好是否可用取决于用户执行了 README 的 `pnpm add --ignore-scripts`。这两件事由安装实验与 README 负责，本仓库只钉「清单形状」与「缺引擎时的运行时」。
+- **它不负责运行时安装本身**：peer 是否被自动安装取决于 profile 的 `autoInstallPeers`；用户点「下载」后的 `pnpm add --ignore-scripts` 由 `40-speech/engine-install` 负责（`host.test.mjs` 三条用例钉命令与审批）。本文件只钉「清单形状」与「缺引擎时的运行时」。
 - **最便宜的一层**：不启动宿主、不下载模型、不建 DOM，两条用例合计不到 100ms。
 
 ## 相邻模块
 
 - 上游：`00-loading/bundle-manifest`（清单字段与可选 peer 的理由）、`40-speech/kokoro-engine`（`engine-missing` 怎么产生）、`40-speech/local-model`（状态里的 `code`）。
-- 对端：`20-routes/speech-routes` 的 503 `{code}`、`10-panel/playback` 的 `EngineMissingError` 与提示文案（面板直接给出 `pnpm add --ignore-scripts` 命令）。
+- 对端：`20-routes/speech-routes` 的 503 `{code}`、`10-panel/playback` 的 `EngineMissingError` 与提示文案、`40-speech/engine-install`（确认后由宿主安装引擎）。
 - 兄弟：`70-testing/contract-tests`（只读源码的扫描器）、`70-testing/unit-and-host`。
 
 ## 改这里时

@@ -3,7 +3,7 @@ import { EDGE_VOICE, LOCAL_VOICES, MAX_HEADER_MARKS, MAX_STORE_BYTES, MAX_TEXT, 
 import { findSource, mergeStore, publicSource, readCollinsKey, readSources, readStore, resolveKey, revisionOf, sameList, writeCollinsKey, writeSources, writeStore } from './files.js';
 import { defineWithModel, dictKey, lookUpChinese, lookUpCollins, lookUpWord, lookUpWordNet } from './dictionary.js';
 import { defaultModelRoute, secret, targetLanguage } from './model.js';
-import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startInstall, stopWorker, synthesize, synthesizeApi } from './speech.js';
+import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startEngineInstall, startInstall, stopWorker, synthesize, synthesizeApi } from './speech.js';
 import { translateWithAzure, translateWithGoogle, translateWithModel, translateWithTencent, translateWithVolcengine } from './translate.js';
 
 /** Required host services: the HTTP route registry. */
@@ -305,6 +305,21 @@ function handleInstall(request, response) {
     return;
   }
   startInstall();
+  response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+    .end(JSON.stringify({ started: true }));
+}
+
+/**
+ * Install the local engine itself, then let the panel ask for the model.
+ * @param {import('node:http').IncomingMessage} request - the incoming request.
+ * @param {import('node:http').ServerResponse} response - the response to complete.
+ */
+function handleEngineInstall(request, response) {
+  if (request.method !== 'POST') {
+    response.writeHead(405, { 'content-type': 'text/plain' }).end('method not allowed');
+    return;
+  }
+  startEngineInstall();
   response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
     .end(JSON.stringify({ started: true }));
 }
@@ -936,6 +951,7 @@ const ROUTES = [
   { path: PATHS.ttsSources, handler: handleSources, effect: 'english-reader: speech sources route' },
   { path: PATHS.status, resource: handleStatus, effect: 'english-reader: local status route' },
   { path: PATHS.install, handler: handleInstall, effect: 'english-reader: local install route' },
+  { path: PATHS.engine, handler: handleEngineInstall, effect: 'english-reader: local engine route' },
   { path: PATHS.translateOptions, resource: handleTranslateOptions, effect: 'english-reader: translation options route' },
   { path: PATHS.translateModels, resource: handleTranslateModels, effect: 'english-reader: translation models route' },
   { path: PATHS.models, resource: handleModels, effect: 'english-reader: endpoint models route' },

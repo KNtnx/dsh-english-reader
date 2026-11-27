@@ -1,6 +1,6 @@
 # 20 宿主路由
 
-**一句话**：宿主半边只做一件事——把 15 条 `exact` 路由挂到 DSH 的 `webServer` 上。每条路由都是薄壳：读请求、看上限、把活交给 `files` / `dictionary` / `speech` / `translate`，最后把结果写成 JSON、音频或一段错误码。
+**一句话**：宿主半边只做一件事——把 16 条 `exact` 路由挂到 DSH 的 `webServer` 上。每条路由都是薄壳：读请求、看上限、把活交给 `files` / `dictionary` / `speech` / `translate`，最后把结果写成 JSON、音频或一段错误码。
 
 ## 一句话
 
@@ -11,10 +11,10 @@
 
 | 位置 | 符号 | 一句话 |
 | --- | --- | --- |
-| `host/routes.js` | `inject`、`apply`、`ROUTES`、`bindRoute` | 路由层本体：声明依赖、注册 15 条、卸载 |
+| `host/routes.js` | `inject`、`apply`、`ROUTES`、`bindRoute` | 路由层本体：声明依赖、注册 16 条、卸载 |
 | `host/routes.js` | `sendJson`、`requestUrl`、`readBody` | 三条公共件：写 JSON、补全 URL、有上限地读体 |
-| `host/constants.js` | `PATHS` | 15 个路径字符串的唯一出处 |
-| `client.js` | `TTS_PATH`、`STORE_PATH`、`TRANSLATE_PATH` 等 15 个常量 | 前端那一半的同名路径（两份必须一致） |
+| `host/constants.js` | `PATHS` | 16 个路径字符串的唯一出处 |
+| `client.js` | `TTS_PATH`、`STORE_PATH`、`TRANSLATE_PATH` 等 16 个常量 | 前端那一半的同名路径（两份必须一致） |
 
 路径前缀统一是 `/api-dsh-english-reader`，`PATHS` 里写全，前端常量也写全：
 
@@ -58,7 +58,7 @@
                     └─ 业务在 host/files.js、host/dictionary.js、host/speech.js、host/translate.js
 ```
 
-卸载方向只有一条：`apply(ctx, config)` 里每条路由一个 `ctx.effect`，插件被关掉时 DSH 逐个调用 `webServer.register` 返回的 dispose，15 条一起消失；同一个 `apply` 里另有语音 worker 的 effect，负责清 pending 与 `worker.kill()`。
+卸载方向只有一条：`apply(ctx, config)` 里每条路由一个 `ctx.effect`，插件被关掉时 DSH 逐个调用 `webServer.register` 返回的 dispose，16 条一起消失；同一个 `apply` 里另有语音 worker 的 effect，负责清 pending 与 `worker.kill()`。
 
 ## 常见改动
 
@@ -67,7 +67,7 @@
 | 加一条路由 | `PATHS` 加键 → `ROUTES` 加一条（带 `effect` 标签）→ 写 `handleXxx` → `client.js` 加同名常量 | `test/host.test.mjs`「every route the panel calls exists on the host」会双向检查 |
 | 改响应形状 | 对应 handler；resource 用 `Response.json`，handler 用 `sendJson` | 面板那侧的解析（`10-panel`）+ 一条读回用例 |
 | 需要新 config 键 | 处理函数签名追加，`bindRoute` 已经会传 | `cordis.patch.yml` 的 `config` 与 `50-dictionary` 的密钥读取 |
-| 换路径前缀 | `PATHS` 与 `client.js` 顶部 15 个常量 | 上述用例用的正则只认 `/api-dsh-english-reader/[a-z/]+` |
+| 换路径前缀 | `PATHS` 与 `client.js` 顶部 16 个常量 | 上述用例用的正则只认 `/api-dsh-english-reader/[a-z/]+` |
 | 改请求上限 | `readBody(request, limit)` 的实参（`MAX_STORE_BYTES` 等放 `30-store/paths-and-limits`） | 超限分支的 413 用例 |
 
 ## 风险与历史坑

@@ -70,9 +70,9 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 把 `web` 换成你实际的 profile（Desktop 版通常是 `desktop`）。安装完重启 `dsh web`。
 
-> 插件只把 `msedge-tts` 当必需依赖。本地引擎 `kokoro-js` 是**可选 peer**：默认不装，`kokoro-js → @huggingface/transformers → onnxruntime-node` 整棵树（约 120 MB，还带 `sharp`/`protobufjs`）不会进入插件安装，安装过程也就不会去跑那个在 CUDA 13 上必然失败的 CUDA 探测脚本。默认安装只有几 MB，Edge 语音开箱即用；想用本地模型，按「本地引擎与构建脚本」用一条命令把引擎装进来。
+> 装好插件后 Edge 语音即可用。要用本地模型：在本地模型卡片或「添加来源」里点「下载并使用」；第一次会先说明将执行什么，确认后插件自己安装本地引擎（约 120 MB，只装一次），装好再下载约 89 MB 的模型。取消不会安装任何东西。
 >
-> 安装时 DSH 若询问是否允许依赖运行构建脚本：`msedge-tts` 那条批准即可（它只做包管理器校验）；本插件不再携带本地引擎的构建脚本。
+> 本地引擎 `kokoro-js` 是**可选 peer**，默认不随插件安装，所以插件安装本身只有几 MB，也不会去跑那个在 CUDA 13 上必然失败的 CUDA 探测脚本。安装失败（离线、受限网络等）时面板会显示原因，也可以按「排错」手动执行命令。
 
 ## 语音来源
 
@@ -81,7 +81,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 | 来源 | 需要 | 说明 |
 | --- | --- | --- |
 | 微软 Edge（在线） | 什么都不用 | 神经音色，需要联网，文本发送到微软。首选的「逐词高亮」体验来自它。 |
-| 本地模型（Kokoro-82M） | 下载 89 MB + 手动装引擎 | 在本机跑，可离线；引擎是可选 peer，需先按「本地引擎与构建脚本」安装 `kokoro-js`，也可指向你已有的模型目录（含 `config.json` 与 `onnx/`）。 |
+| 本地模型（Kokoro-82M） | 约 120 MB 引擎 + 89 MB 模型 | 点「下载并使用」后由插件安装引擎并下载模型；也可指向你已有的模型目录（含 `config.json` 与 `onnx/`）。只用 Edge 的用户不用安装。 |
 | 自定义 TTS API | 地址、协议、模型、密钥 | 三种协议：OpenAI 兼容 `/audio/speech`、阿里云百炼原生接口、Azure 语音（SSML）。只填域名即可，路径会自动探测并记住。 |
 
 **为什么协议是必选项**：同一家服务的不同接口路径和请求体完全不同。阿里云百炼的 OpenAI 兼容前缀只支持对话与向量，语音合成走原生的 `api/v1/services/audio/tts/SpeechSynthesizer`，返回的还是音频下载地址。协议决定发什么请求。
@@ -158,7 +158,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 | 现象 | 处理 |
 | --- | --- |
 | 面板一片空白 | 打开浏览器控制台看报错；多半是插件客户端没加载，重启 `dsh web` |
-| 「本地引擎未安装」 | 本地引擎是可选 peer，默认不装；按下面「本地引擎与构建脚本」安装后重启。只用 Edge 可以忽略 |
+| 「本地引擎未安装」 | 点本地模型卡片里的「安装引擎并下载」，确认后由插件安装；失败时看下面「本地引擎与构建脚本」的手动命令 |
 | 本地模型一直「未下载」 | 点「下载」等进度到 100%；模型在 `$DSH_HOME/dsh-english-reader/models/` |
 | 自定义 API 报 400 / 401 | 先在编辑窗口点「测试连接」，它会显示具体路径与原始响应；401 表示密钥被服务商拒绝 |
 | 音色填了却不生效 | 换一个能连通的来源再试；部分服务商对未知音色是静默回退而不是报错 |
@@ -168,15 +168,17 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 ### 本地引擎与构建脚本
 
-本地引擎 `kokoro-js` 是可选 peer，默认不随插件安装。想用本地模型时，在 profile 目录执行：
+本地引擎 `kokoro-js` 是可选 peer，默认不随插件安装。点「下载并使用」时，面板会先说明将执行：
 
 ```bash
 pnpm add --ignore-scripts kokoro-js@^1.2.1
 ```
 
-然后重启 `dsh web`。`--ignore-scripts` 跳过 `onnxruntime-node` 的安装脚本——它只负责下载 CUDA 加速库，CPU 推理需要的二进制本来就在包里（实测 `import('kokoro-js')` 与 `onnxruntime-node.InferenceSession` 均正常）。`link:` 安装的插件改在插件目录执行 `npm install --ignore-scripts`。
+确认后由插件在后台执行（约 120 MB，只装一次），完成后自动继续下载约 89 MB 的模型。`--ignore-scripts` 跳过 `onnxruntime-node` 的安装脚本——它只负责下载 CUDA 加速库，CPU 推理需要的二进制本来就在包里。
 
-装完引擎后，再跑普通 `pnpm install` 会因 `onnxruntime-node`、`sharp`、`protobufjs` 的构建脚本尚未表态而以 `ERR_PNPM_IGNORED_BUILDS` 停下（这是「待批准」，不是崩溃）。长期稳定：在 profile 的 `pnpm-workspace.yaml` 里显式表态（版本以安装日志为准）：
+安装失败时，面板会显示原因；可以打开终端在 profile 目录手动执行同一条命令后重启 `dsh web`。`link:` 安装的插件会改用插件目录里的 `npm install --ignore-scripts --no-save`。
+
+引擎装好后，普通 `pnpm install` 仍可能因 `onnxruntime-node`、`sharp`、`protobufjs` 的构建脚本未表态而以 `ERR_PNPM_IGNORED_BUILDS` 停下（是「待批准」，不是崩溃）。插件安装成功后会尽力把 `onnxruntime-node`、`sharp` 写成 `false`；如果上游升级版本后它们又变成待批准，不要批准 `onnxruntime-node`——这个脚本在 CUDA 13 上必然失败，pnpm 随即把包丢掉：
 
 ```yaml
 allowBuilds:
@@ -185,8 +187,6 @@ allowBuilds:
   onnxruntime-node@1.21.0: false
   sharp@0.34.5: false
 ```
-
-不要批准 `onnxruntime-node`：这个脚本在 CUDA 13 上必然失败，pnpm 随即把包丢掉；它的预编译 CPU 二进制本来就在包里。
 
 ## 开发
 

@@ -12,7 +12,7 @@
 
 - `inject`（数组）：告诉 Cordis 本插件需要 `webServer` 服务；没有它，`register` 无处可注册。
 - `apply(ctx, config)`：同步返回，无返回值。它做两件事，顺序有意义：
-  1. `applyRoutes(ctx, config)` —— 15 条路由，**必须成功**，缺一条前端就 404；
+  1. `applyRoutes(ctx, config)` —— 16 条路由，**必须成功**，缺一条前端就 404；
   2. `mountTool(ctx)` —— 模型工具，**失败也不影响面板**。
 - `config` 来自 `cordis.patch.yml` 里那一行的 `config`，目前是 `{}`，但 `host/routes.js` 会读 `microsoftKey` / `tencentSecretId` 等可选键。
 

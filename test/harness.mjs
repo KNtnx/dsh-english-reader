@@ -90,6 +90,9 @@ export function createHost(options = {}) {
     headers: { 'content-type': 'application/json' },
   })
   const wait = (word) => new Promise((resolve) => setTimeout(resolve, latency[word] ?? 0))
+  // `engine: 'missing'` starts like a fresh profile; POSTing the engine route
+  // installs it, which is what the panel's confirm flow has to wait for.
+  const host = { engineReady: options.engine !== 'missing', engineAsked: 0, installAsked: 0 }
 
   const fetch = async (input, init = {}) => {
     const url = new URL(String(input), 'http://127.0.0.1')
@@ -99,7 +102,22 @@ export function createHost(options = {}) {
 
     if (path === '/api-dsh-english-reader/tts/sources' && method === 'GET') return json({ sources: [] })
     if (path === '/api-dsh-english-reader/local/status') {
-      return json(options.localStatus ?? { installed: false, phase: 'absent', onDisk: false, dir: '/tmp/model' })
+      const base = options.localStatus ?? { installed: false, phase: 'absent', onDisk: false, dir: '/tmp/model' }
+      const ready = host.engineReady
+      return json({
+        ...base,
+        engine: ready ? { phase: 'ready', error: '', log: '' } : { phase: 'missing', error: '', log: '' },
+        ...(ready ? {} : { code: 'engine-missing' }),
+      })
+    }
+    if (path === '/api-dsh-english-reader/local/engine' && method === 'POST') {
+      host.engineAsked += 1
+      host.engineReady = true
+      return json({ started: true }, { status: 202 })
+    }
+    if (path === '/api-dsh-english-reader/local/install' && method === 'POST') {
+      host.installAsked += 1
+      return json({ started: true }, { status: 202 })
     }
     if (path === '/api-dsh-english-reader/translate/options') {
       return json({
@@ -184,7 +202,7 @@ export function createHost(options = {}) {
     return json({ ok: false, error: `no mock for ${method} ${path}` }, { status: 404 })
   }
 
-  const host = {
+  Object.assign(host, {
     fetch, calls, json, store: options.store ?? null, revision: 'r0', writes: 0,
     collinsKey: options.collinsKey ?? '',
     /** Pretend a tool call wrote the library while the panel was open. */
@@ -192,7 +210,7 @@ export function createHost(options = {}) {
       host.store = state
       host.revision = `r${host.writes += 1}`
     },
-  }
+  })
   return host
 }
 
