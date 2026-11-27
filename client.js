@@ -4667,7 +4667,7 @@ function sameLibrary(left, right) {
 .er-say-ctx{margin-left:2px}
 .er-sense-eg{display:flex;align-items:baseline;gap:2px;padding-left:8px;border-left:2px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#e6e6e6));font-size:calc(var(--dsh-content-font-size-secondary,13px) - 2px);color:var(--dsw-alias-label-secondary,#888);line-height:1.4}
 .er-wordcard-trline{display:flex;align-items:baseline;gap:4px;line-height:1.5}
-.er-wordcard-tr{padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,'Songti SC',serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-secondary,#666)}
+.er-wordcard-tr{padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:inherit;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1px);color:var(--dsw-alias-label-secondary,#666)}
 .er-wordcard-foot{display:flex;justify-content:flex-end;margin-top:2px}
 .er-display-dict{margin-left:auto}
 .er-words{display:flex;flex-direction:column;gap:6px}
@@ -4678,7 +4678,7 @@ function sameLibrary(left, right) {
 .er-wrow-body{display:flex;flex-direction:column;gap:4px;padding:0 12px 8px 12px;animation:er-pop .12s ease-out}
 .er-wrow-head .er-entry-title{font-size:calc((var(--dsh-content-font-size-secondary,13px) + 1px) * var(--er-scale,1))}
 .er-wrow-head .er-entry-meta{font-size:calc((var(--dsh-content-font-size-secondary,13px) - 2px) * var(--er-scale,1))}
-.er-wrow-zh{display:flex;flex-direction:column;gap:2px;font-family:Georgia,'Songti SC',serif;font-size:calc((var(--dsh-content-font-size-secondary,13px) + 0.5px) * var(--er-scale,1));color:var(--dsw-alias-label-primary,#111);line-height:1.5}
+.er-wrow-zh{display:flex;flex-direction:column;gap:2px;font-family:inherit;font-size:calc((var(--dsh-content-font-size-secondary,13px) + 0.5px) * var(--er-scale,1));color:var(--dsw-alias-label-primary,#111);line-height:1.5}
 .er-wrow-en{display:flex;flex-direction:column;gap:3px}
 .er-wrow-ctx{display:flex;gap:6px;margin:2px 0 0;padding-top:6px;border-top:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#ececec));font-family:Georgia,serif;font-size:calc(var(--dsh-content-font-size-secondary,13px) * var(--er-scale,1));line-height:1.5;color:var(--dsw-alias-label-secondary,#888)}
 .er-wrow-ctx-label{flex:0 0 auto;font-family:inherit;font-style:normal;color:var(--dsw-alias-label-secondary,#aaa)}

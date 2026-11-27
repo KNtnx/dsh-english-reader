@@ -72,7 +72,7 @@ test('every literal copy key the panel asks for exists', () => {
   assert.deepEqual(missing, [], `copy keys the panel asks for but the dictionary lacks: ${missing.join(', ')}`)
 })
 
-test('the reading text follows the host font instead of pinning a serif stack', () => {
+test('the reading and gloss text follow the host font instead of pinning a serif stack', () => {
   // Reported from a claude-style panel: the Chinese translation line stayed in a
   // Song typeface while the rest of the UI followed --dsw-font-family. The rule
   // must inherit, so DSH's body font (and the user's font setting) reaches both
@@ -95,6 +95,16 @@ test('the reading text follows the host font instead of pinning a serif stack', 
   assert.notEqual(original, '', '.er-line has a rule')
   assert.doesNotMatch(original, /font-family:/,
     'the original line inherits the host body font as well')
+
+  // The Chinese glosses in the word card and the saved-word list used the same
+  // serif stack; they follow the same rule so one font setting covers the panel.
+  for (const selector of ['.er-wordcard-tr', '.er-wrow-zh']) {
+    const rule = ruleOf(selector)
+    assert.notEqual(rule, '', `${selector} has a rule`)
+    assert.match(rule, /font-family:inherit/, `${selector} inherits the host body font`)
+    assert.doesNotMatch(rule, /Georgia|Songti|SimSun|STSong|serif/,
+      `${selector} must not pin a typeface`)
+  }
 })
 
 test('every class the panel applies has a rule', () => {
