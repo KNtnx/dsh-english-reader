@@ -25,8 +25,10 @@
     "test": "node --test test/"
   },
   "dependencies": {
-    "kokoro-js": "^1.2.1",
     "msedge-tts": "^2.1.1"
+  },
+  "optionalDependencies": {
+    "kokoro-js": "^1.2.1"
   },
   "dsh": {
     "bundle": {

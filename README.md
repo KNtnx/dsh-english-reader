@@ -70,7 +70,9 @@ dsh plugin --profile web add link:./dsh-english-reader
 
 把 `web` 换成你实际的 profile（Desktop 版通常是 `desktop`）。安装完重启 `dsh web`。
 
-> 插件带两个运行时依赖（`msedge-tts`、`kokoro-js`），通常随安装一起装好。若面板报「引擎不可用」，进插件目录执行一次 `npm install --omit=dev` 再重启。
+> 插件只把 `msedge-tts` 当必需依赖；本地引擎 `kokoro-js` 是**可选依赖**——它会带入 `onnxruntime-node`，后者的安装脚本要探测本机 CUDA，探测失败（例如 CUDA 13）就会报错，以前这正是整笔插件安装被回滚的原因。现在不会了：可选依赖失败最多让 pnpm 丢掉 `onnxruntime-node`，**本地模型**不可用，而插件与 Edge 语音照常安装、照常朗读。
+>
+> 安装时 DSH 若询问是否允许依赖运行构建脚本，按提示批准即可完成安装（`msedge-tts` 的脚本只做包管理器校验，跳过也不影响朗读）。想用本地模型，再按「排错」里的「本地引擎与构建脚本」把引擎补回来。
 
 ## 语音来源
 
@@ -79,7 +81,7 @@ dsh plugin --profile web add link:./dsh-english-reader
 | 来源 | 需要 | 说明 |
 | --- | --- | --- |
 | 微软 Edge（在线） | 什么都不用 | 神经音色，需要联网，文本发送到微软。首选的「逐词高亮」体验来自它。 |
-| 本地模型（Kokoro-82M） | 下载 89 MB | 在本机跑，可离线；也可指向你已有的模型目录（含 `config.json` 与 `onnx/`）。 |
+| 本地模型（Kokoro-82M） | 下载 89 MB | 在本机跑，可离线；也可指向你已有的模型目录（含 `config.json` 与 `onnx/`）。引擎是可选依赖，安装时可能被跳过。 |
 | 自定义 TTS API | 地址、协议、模型、密钥 | 三种协议：OpenAI 兼容 `/audio/speech`、阿里云百炼原生接口、Azure 语音（SSML）。只填域名即可，路径会自动探测并记住。 |
 
 **为什么协议是必选项**：同一家服务的不同接口路径和请求体完全不同。阿里云百炼的 OpenAI 兼容前缀只支持对话与向量，语音合成走原生的 `api/v1/services/audio/tts/SpeechSynthesizer`，返回的还是音频下载地址。协议决定发什么请求。
@@ -156,13 +158,36 @@ dsh plugin --profile web add link:./dsh-english-reader
 | 现象 | 处理 |
 | --- | --- |
 | 面板一片空白 | 打开浏览器控制台看报错；多半是插件客户端没加载，重启 `dsh web` |
-| 「引擎不可用」 | 插件依赖没装：进插件目录 `npm install --omit=dev` |
+| 「本地引擎未安装」 | 可选依赖在安装时被跳过了；按下面「本地引擎与构建脚本」补回。只用 Edge 可以忽略 |
 | 本地模型一直「未下载」 | 点「下载」等进度到 100%；模型在 `$DSH_HOME/dsh-english-reader/models/` |
 | 自定义 API 报 400 / 401 | 先在编辑窗口点「测试连接」，它会显示具体路径与原始响应；401 表示密钥被服务商拒绝 |
 | 音色填了却不生效 | 换一个能连通的来源再试；部分服务商对未知音色是静默回退而不是报错 |
 | 逐词高亮不动 | 只有 Edge 引擎报告词时间戳，其余来源按字符长度估算 |
 | 查词一直「没查到」 | 词典需要联网；先在设置里确认字典档位，词组查不到是正常的，会走翻译来源 |
 | 收藏的单词原文显示「无」 | 从字典卡片搜索收藏的词没有来源句，这是预期行为 |
+
+### 本地引擎与构建脚本
+
+`kokoro-js` 是可选依赖，它的原生运行时 `onnxruntime-node` 在安装时会探测本机 CUDA；探测失败时 pnpm 会把该包丢掉，面板于是显示「本地引擎未安装」。两条路补回来：
+
+- **立刻恢复**：在 profile 目录执行
+
+  ```bash
+  pnpm add --ignore-scripts kokoro-js@^1.2.1
+  ```
+
+  然后重启 `dsh web`。`onnxruntime-node` 的 CPU 二进制随 npm 包附带，跳过构建脚本不影响本地推理。它会把 `kokoro-js` 记成 profile 的直接依赖；若插件是用 `link:` 装的，改在插件目录执行 `npm install --ignore-scripts`。
+- **长期稳定**：在 profile 的 `pnpm-workspace.yaml` 里把四个构建脚本显式表态（版本号以安装日志为准），之后的普通安装就不会再把引擎弄丢：
+
+  ```yaml
+  allowBuilds:
+    msedge-tts@2.1.1: true
+    protobufjs@7.6.6: true
+    onnxruntime-node@1.21.0: false
+    sharp@0.34.5: false
+  ```
+
+  批准 `onnxruntime-node` 反而是有害的：这个脚本在 CUDA 13 上必然失败，pnpm 随即把包丢掉；而它的预编译 CPU 二进制本来就在包里。
 
 ## 开发
 

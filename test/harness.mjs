@@ -99,7 +99,7 @@ export function createHost(options = {}) {
 
     if (path === '/api-dsh-english-reader/tts/sources' && method === 'GET') return json({ sources: [] })
     if (path === '/api-dsh-english-reader/local/status') {
-      return json({ installed: false, phase: 'absent', onDisk: false, dir: '/tmp/model' })
+      return json(options.localStatus ?? { installed: false, phase: 'absent', onDisk: false, dir: '/tmp/model' })
     }
     if (path === '/api-dsh-english-reader/translate/options') {
       return json({
@@ -173,6 +173,11 @@ export function createHost(options = {}) {
           status: 502,
           headers: { 'content-type': 'text/plain' },
         })
+      }
+      // The optional local engine was skipped at install time; the host refuses
+      // only local synthesis this way and the panel has copy of its own for it.
+      if (options.tts === 'engine-missing') {
+        return json({ code: 'engine-missing' }, { status: 503 })
       }
       return new Response(new Uint8Array([0]), { status: 200, headers: { 'content-type': 'audio/mpeg' } })
     }

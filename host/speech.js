@@ -15,6 +15,8 @@ export const local = {
   total: 0,
   file: '',
   error: '',
+  /** Why the last failure happened, when the worker named a cause (`engine-missing`). */
+  code: '',
   /** @type {boolean|null} */
   onDisk: null,
 };
@@ -261,8 +263,13 @@ export function startWorker() {
       if (entry === undefined) continue;
       pending.delete(message.id);
       clearTimeout(entry.timer);
-      if (message.ok === true) entry.resolve(message);
-      else entry.reject(new Error(String(message.error ?? 'speech worker failed')));
+      if (message.ok === true) {
+        entry.resolve(message);
+      } else {
+        const failure = new Error(String(message.error ?? 'speech worker failed'));
+        if (typeof message.code === 'string' && message.code !== '') failure.code = message.code;
+        entry.reject(failure);
+      }
     }
   });
   child.stderr.setEncoding('utf8');
@@ -287,7 +294,7 @@ export function startWorker() {
 
 /**
  * Fold one event from the worker into the local provider state.
- * @param {{event: string, phase?: string, loaded?: number, total?: number, file?: string, error?: string}} event - the event.
+ * @param {{event: string, phase?: string, code?: string, loaded?: number, total?: number, file?: string, error?: string}} event - the event.
  */
 export function applyEvent(event) {
   if (event.event === 'progress') {
@@ -298,17 +305,23 @@ export function applyEvent(event) {
     return;
   }
   if (event.event === 'phase') {
-    if (event.phase === 'loading') local.phase = local.onDisk === true ? 'loading' : 'downloading';
+    if (event.phase === 'loading') {
+      local.phase = local.onDisk === true ? 'loading' : 'downloading';
+      local.error = '';
+      local.code = '';
+    }
     if (event.phase === 'ready') {
       local.phase = 'ready';
       local.onDisk = true;
       local.loaded = 0;
       local.total = 0;
       local.error = '';
+      local.code = '';
     }
     if (event.phase === 'error') {
       local.phase = 'error';
       local.error = String(event.error ?? '');
+      local.code = String(event.code ?? '');
     }
   }
   if (event.event === 'ready') {
@@ -353,6 +366,8 @@ export function localStatus() {
     approximateBytes: MODEL_BYTES_APPROX,
     file: local.file,
     error: local.error,
+    /** `engine-missing` when the optional local engine was never installed; else ''. */
+    code: local.code,
     model: MODEL_ID,
     dtype: MODEL_DTYPE,
     /** Where the bundled model lives on disk, so the panel can show it. */
@@ -367,11 +382,13 @@ export function startInstall() {
   if (local.phase === 'downloading' || local.phase === 'loading' || local.phase === 'ready') return;
   local.phase = 'downloading';
   local.error = '';
+  local.code = '';
   local.loaded = 0;
   local.total = 0;
   void ask({ op: 'preload' }, 30 * 60 * 1000).catch((error) => {
     local.phase = 'error';
     local.error = error instanceof Error ? error.message : String(error);
+    local.code = typeof error?.code === 'string' ? error.code : '';
   });
 }
 

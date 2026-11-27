@@ -153,11 +153,18 @@ function speechResponse(clip) {
  * status' error, so the panel can say what went wrong.
  * @param {string} provider - the provider that failed.
  * @param {unknown} error - what it threw.
- * @returns {Response} a 502 whose body names the failure.
+ * @returns {Response} a 503 `{code:'engine-missing'}` when the optional local
+ *   engine is absent, otherwise a 502 whose body names the failure.
  */
 function speechFailure(provider, error) {
   const message = error instanceof Error ? error.message : String(error);
   if (provider === 'local' && local.phase !== 'ready') local.error = message;
+  // The optional local engine was skipped at install time; that is a different
+  // thing from a sentence the engine refused, and the panel says so by code.
+  if (provider === 'local' && error instanceof Error && error.code === 'engine-missing') {
+    local.code = 'engine-missing';
+    return Response.json({ code: 'engine-missing' }, { status: 503 });
+  }
   return new Response(`speech synthesis failed: ${message}`, { status: 502 });
 }
 

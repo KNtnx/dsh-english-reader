@@ -84,7 +84,7 @@ bsk_inspect screenshot              # 三张：阅读页、设置卡片、我的
 
 ```bash
 npm install                 # 一次性：react / react-dom / jsdom 是 devDependencies
-timeout 300 node --test test/        # 全套，约 3 秒，130 项
+timeout 300 node --test test/        # 全套，约 3 秒，133 项
 ```
 
 单文件、单用例：
@@ -113,7 +113,7 @@ node --test --test-name-pattern "gloss" test/
 
 | Bug（现象 ← 原因） | 守护用例 |
 | --- | --- |
-| 每句都 `502 speech worker stopped (code 1)` ← 拆分后 worker 路径指向 `host/worker.mjs` | `host.test.mjs`「every module points at files that exist」；`panel.playback.test.mjs` 5 条 |
+| 每句都 `502 speech worker stopped (code 1)` ← 拆分后 worker 路径指向 `host/worker.mjs` | `host.test.mjs`「every module points at files that exist」；`panel.playback.test.mjs` 7 条 |
 | 设置卡片崩溃 `modelLoaded is not defined` ← 拆视图漏传本地引擎分支的值 | `views.test.mjs`「every view receives every panel value it uses」 |
 | 右键词卡跑到页面顶部 ← `cardHeight` 丢参，`top` 变 `NaN` 被丢弃 | `panel.dict.test.mjs`「the card opens at the word that was clicked」+ `views.test.mjs` 的「漏传」检查 |
 | 中文模式里出现英文释义 ← 行回落到了英文缓存 | `panel.dict.test.mjs`「Chinese-only mode never prints an English gloss in the list」 |
@@ -140,6 +140,7 @@ node --test --test-name-pattern "gloss" test/
 | 手改/工具写的归类被浏览器旧副本抹掉 ← 宿主合并只看 `addedAt`，而移动不改它 | `host.test.mjs`「a move survives a save that never saw it」「the browser and the host settle a filing the same way」（`internals.test.mjs` 同一条跨端一致性用例） |
 | 工具写完必须刷新页面才看得见 ← 面板只在挂载时读一次库 | `panel.sync.test.mjs` 四条：新增、删除、自己的写不回头、被宿主纠正后立刻读回 |
 | 卸载插件抛 `Assignment to constant variable`（只有「合成过再卸载」才走到）← 别的模块给 ESM import 绑定赋值 | `host.test.mjs`「the plugin unloads after the speech worker started」 |
+| 插件整笔装不上（`ERR_PNPM_EXECUTOR_LIFECYCLE_SCRIPT_FAILED`）← 本地引擎带入的 `onnxruntime-node` 在 CUDA 13 上 postinstall 失败，pnpm 回滚整包 | `install.test.mjs` 两条；`panel.playback.test.mjs`「a local engine skipped at install time is named instead of blamed on the sentence」 |
 | 同一毫秒内两次移动，先写入的赢 ← 时间戳相等时用 `>` 判新 | `host.test.mjs`「a move survives a save that never saw it」的 sameMoment 分支；`internals.test.mjs` 跨端一致性用例 |
 
 ---

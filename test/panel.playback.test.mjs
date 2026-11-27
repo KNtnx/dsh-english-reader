@@ -55,6 +55,32 @@ test('a refused sentence is reported instead of silently doing nothing', async (
   }
 })
 
+test('a local engine skipped at install time is named instead of blamed on the sentence', async () => {
+  // The engine is an optional dependency; when its native runtime fails to
+  // build, the plugin still installs and Edge still works. Pressing play on the
+  // local source must say that, not "the speech service refused this sentence".
+  const api = await launchPanel({
+    state: { ...FIXTURE_STATE, activeSourceId: 'bundled' },
+    host: {
+      tts: 'engine-missing',
+      localStatus: {
+        installed: false, phase: 'error', onDisk: true, dir: '/tmp/model',
+        code: 'engine-missing', error: 'local engine unavailable',
+      },
+    },
+  })
+  try {
+    await api.waitFor(() => api.text('.er-capsule-text') === 'Kokoro-82M', { label: 'the bundled local source' })
+    await api.click(playButton(api))
+    await api.waitFor(() => api.q('.er-notice-err') !== null, { label: 'the error bar' })
+    assert.match(api.text('.er-notice-err'), /local voice engine is not installed/i)
+    assert.match(decodeURIComponent(ttsCalls(api)[0].search), /provider=local/, 'it asked the local engine')
+    assert.notEqual(playButton(api)?.getAttribute('aria-label'), 'Pause', 'playback did not start')
+  } finally {
+    await api.unmount()
+  }
+})
+
 test('the audio is fetched once per sentence while it is cached', async () => {
   const api = await launchPanel({ state: FIXTURE_STATE })
   try {

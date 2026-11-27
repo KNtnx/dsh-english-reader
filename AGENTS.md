@@ -6,7 +6,7 @@
 
 一个 DSH 插件，装起来以后在右侧栏给中文用户朗读英文文章/对话，并带一个可共享的单词库。它由**两个半边**组成，写同一份数据：
 
-- **浏览器半边** `client.js`（4,836 行，单 `__ModuleLoader__` 工厂，无构建步骤）；
+- **浏览器半边** `client.js`（4,853 行，单 `__ModuleLoader__` 工厂，无构建步骤）；
 - **宿主半边** `index.js` → `host/*.js`（15 条 HTTP 路由 + 一个模型工具 + 一个语音子进程 `worker.mjs`）。
 
 三处入口：右侧栏页签、左侧栏整页视图、输入框上方的小按钮。用户数据在宿主 `$DSH_HOME/dsh-english-reader/library.json`，界面状态在本机 `localStorage`。
@@ -15,7 +15,7 @@
 
 ```bash
 npm install                                    # react / react-dom / jsdom
-timeout 300 node --test test/                  # 全量，约 3 秒，130 项
+timeout 300 node --test test/                  # 全量，约 3 秒，133 项
 node --test test/panel.dict.test.mjs           # 单文件
 node --test --test-name-pattern "gloss" test/  # 单用例
 ```
@@ -45,6 +45,7 @@ node --test --test-name-pattern "gloss" test/  # 单用例
 | 翻译来源、模型翻译 | [50-dictionary/translate-providers](./docs/modules/50-dictionary/translate-providers.md) |
 | `english_reader` 工具的动作 | [60-tool](./docs/modules/60-tool/README.md) |
 | 写测试、跑测试、为什么有这些用例 | [70-testing](./docs/modules/70-testing/README.md) + `docs/TESTING.zh.md` |
+| 插件装不上、本地引擎缺失、安装期依赖报错 | [70-testing/install-contract](./docs/modules/70-testing/install-contract.md) + README 的安装与排错段 |
 
 ## 模块地图
 
@@ -57,7 +58,7 @@ node --test --test-name-pattern "gloss" test/  # 单用例
 | `40` | [语音](./docs/modules/40-speech/README.md) | Edge 在线 / Kokoro 本地，都在子进程 |
 | `50` | [词典与翻译](./docs/modules/50-dictionary/README.md) | 4 个词典源、5 个翻译源 |
 | `60` | [模型工具](./docs/modules/60-tool/README.md) | `english_reader` 的 17 个动作 |
-| `70` | [测试与验收](./docs/modules/70-testing/README.md) | 四层用例 + 静态契约扫描 |
+| `70` | [测试与验收](./docs/modules/70-testing/README.md) | 五层用例 + 静态契约扫描 |
 
 ## 硬约束（破坏其中一条就别提交）
 
@@ -71,6 +72,7 @@ node --test --test-name-pattern "gloss" test/  # 单用例
 8. **文案有两处**：界面文案在 `client.js` 的 `DICT`，插件列表文案在 `locale/*.json`，key 两端必须一致。
 9. **测试必须绿**，而且新逻辑要有一条「回退它就变红」的用例；只跑 jsdom 不算验证过浏览器。
 10. **改代码必须改文档**：本文件保持目录地位，细节写进对应小模块文档。
+11. **本地引擎是可选依赖**：`kokoro-js` 必须留在 `optionalDependencies`。它带进来的 `onnxruntime-node` 在 CUDA 探测失败时会让安装脚本失败；它一旦回到 `dependencies`，一次失败的安装会回滚整个插件。缺引擎时 worker 回 `engine-missing`，Edge 主路径照常工作（`test/install.test.mjs` 守着）。
 
 ## 一次改动的流程
 

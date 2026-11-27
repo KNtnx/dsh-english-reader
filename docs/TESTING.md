@@ -5,7 +5,7 @@ word, a dictionary change, a voice change and a slow network all write to state
 that is rendered in the same place. Nearly every bug that survived a manual check
 was of that shape.
 
-Three incidents shaped this document, because in each one the suite was green
+Four incidents shaped this document, because in each one the suite was green
 while a feature was broken:
 
 | What broke | Why the suite missed it |
@@ -13,6 +13,7 @@ while a feature was broken:
 | Every sentence failed to play (`502 speech worker stopped (code 1)`) | the host was split into `host/*.js` and the worker path became `host/worker.mjs`; every route test mocks speech |
 | The settings sheet crashed the panel (`modelLoaded is not defined`) | the view split lost values used only on the local-engine branch, and the suite runs the Edge branch |
 | A changed translation source kept showing the old translation | the stored translation was validated by hash and line count, not by source |
+| The plugin could not be installed at all (`ERR_PNPM_EXECUTOR_LIFECYCLE_SCRIPT_FAILED`) | a transitive native package (`onnxruntime-node`, under the optional local engine) failed its postinstall and pnpm rolled the package back; nothing read the manifest |
 
 So: a test that does not fail when the code is broken is worse than no test.
 
@@ -22,7 +23,7 @@ The browser procedure — the twelve-step pass that every release and every stru
 
 ```bash
 npm install     # once; react, react-dom and jsdom are devDependencies
-npm test        # every file under test/, ~3 s, 130 cases
+npm test        # every file under test/, ~3 s, 133 cases
 ```
 
 While fixing something, one file at a time:
@@ -35,10 +36,11 @@ node --test --test-name-pattern "gloss" test/
 Always bound a test run (`timeout 300 node --test test/` in a shell): a hung
 lookup once kept a machine busy for minutes.
 
-## The four layers
+## The five layers
 
 | Layer | Files | Answers |
 | --- | --- | --- |
+| Install contract | `install.test.mjs` | is the local engine still optional, and does a worker without it answer `engine-missing` instead of dying? |
 | Static contracts | `copy.test.mjs`, `views.test.mjs`, `host.test.mjs` ("every route…", "every module points at files that exist") | do the client and host agree on paths, keys, classes, and file locations? |
 | Pure logic | `internals.test.mjs` | sentence splitting, marks, merge, tombstones, hashes |
 | Host routes | `host.test.mjs` | one route at a time against a temporary `$DSH_HOME`, with a stubbed `fetch` for upstreams |
@@ -52,7 +54,8 @@ fails there rather than in the browser.
 
 | Bug (symptom → cause) | Guard |
 | --- | --- |
-| Every sentence failed with `502 speech worker stopped (code 1)` — the worker path pointed at `host/worker.mjs` after the split | `host.test.mjs` "every module points at files that exist"; `panel.playback.test.mjs` (5 cases) |
+| Every sentence failed with `502 speech worker stopped (code 1)` — the worker path pointed at `host/worker.mjs` after the split | `host.test.mjs` "every module points at files that exist"; `panel.playback.test.mjs` (7 cases) |
+| The plugin could not be installed at all — `kokoro-js` pulled in `onnxruntime-node`, whose postinstall failed on CUDA 13, and pnpm rolled the whole package back | `install.test.mjs` (two cases); `panel.playback.test.mjs` "a local engine skipped at install time is named instead of blamed on the sentence" |
 | The panel crashed on the local engine: `modelLoaded is not defined` — the view split lost values | `views.test.mjs` "every view receives every panel value it uses" |
 | Chinese-only mode still printed an English gloss — the row fell back to the English cache | `panel.dict.test.mjs` "Chinese-only mode never prints an English gloss in the list" |
 | A model-written entry never appeared in the list — it was cached as `word\|model` but stored as `word\|model\|provider/model` | `panel.dict.test.mjs` "a model-written entry is found by the list, not only by the card" |

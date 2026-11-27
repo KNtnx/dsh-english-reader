@@ -12,7 +12,7 @@
 | 文件 | 关键符号 | 一句话 |
 | --- | --- | --- |
 | `host/speech.js` | `synthesize`、`synthesizeApi`、`cache`、`local` | 调度、缓存、本地模型状态；自带端点也在这里 |
-| `worker.mjs` | `handle`、`loadEdge`、`loadKokoro`、`toWav16` | 子进程：两个引擎，一行一个 JSON |
+| `worker.mjs` | `handle`、`loadEdge`、`loadKokoro`、`toWav16`、`isEngineMissing`、`classifyEngineFailure` | 子进程：两个引擎，一行一个 JSON |
 | `host/constants.js` | `MODEL_ID`、`MODEL_DTYPE`、`CACHE_LIMIT`、`LOCAL_VOICES`、`EDGE_VOICE`、`PROTOCOLS` | 模型、上限、音色、协议白名单 |
 | `host/routes.js` | `handleTts`、`handleStatus`、`handleInstall` | 路由层：参数、拒绝码、`x-er-marks` 响应头 |
 | `client.js` | `clipFor`、`speak`、`installModel` | 面板：一句一请求；本地模型轮询状态 |
@@ -46,6 +46,8 @@ client.js  clipFor(sentence)
 
 音频以 `Response` 回去，marks 走响应头 `x-er-marks`（base64 JSON）；面板解码后交给 `10-panel/word-alignment`。
 
+本地分支还多一种结局：`optionalDependencies` 里的引擎没装（见 `00-loading/bundle-manifest`）时 worker 回 `code:'engine-missing'`，`/tts` 变 503 而不是 502，面板显示「本地语音引擎未安装」，Edge 不受影响。
+
 ## 常见改动
 
 | 需求 | 改哪里 | 顺手补什么 |
@@ -54,12 +56,14 @@ client.js  clipFor(sentence)
 | 换本地模型或精度 | `local-model` 与 `kokoro-engine` 引用的常量 | `MODEL_BYTES_APPROX`——面板显示的就是它 |
 | 端点地址总配不对 | `custom-endpoints` 的 `endpointCandidates` / `firstThatAnswers` | 面板「验证」按钮走的 `endpointVerdict` |
 | 同一句被反复合成 | `clip-cache` 的键与 `CACHE_LIMIT` | `test/panel.playback.test.mjs`（同句只请求一次） |
+| 本地引擎装不上 / 只要 Edge | 见 `00-loading/bundle-manifest` 与 README 的安装段：`kokoro-js` 留在 `optionalDependencies` | `test/install.test.mjs` 两条 |
 | 逐词高亮错位 | `edge-engine` 的 marks 单位 + `10-panel/word-alignment` | 面板对 marks 缺失时的均分估算 |
 
 ## 风险与历史坑
 
 - **子进程路径是 `../worker.mjs`**：它相对 `host/speech.js` 解析。拆分 `host/` 之后写成 `./worker.mjs`，结果是每句都 502 而路由测试全绿；现在由 `test/host.test.mjs` 的「every module points at files that exist」守着。
 - **子进程不是性能优化，是硬需求**：插件宿主把 CommonJS 依赖求值成空 `exports`，两个引擎包只能在普通 Node 进程里加载（见 `kokoro-engine`）。
+- **本地引擎是可选依赖，别挪回硬依赖**：`kokoro-js` → `@huggingface/transformers` → `onnxruntime-node` 的 postinstall 会探测 CUDA；版本不认识时安装脚本失败，pnpm 回滚整笔安装，插件连 Edge 都用不了（历史事故，`test/install.test.mjs` 守着）。
 - **首次使用要下 ~89MB**：下载期间 `/tts` 对 local 回 503 `preparing`，面板应当轮询 `/local/status` 而不是重试合成；点「下载」走的 `startInstall` 会等 30 分钟。
 - **`hasModel` 有进程内记忆**：一旦读过一次磁盘就不再问；运行中删掉模型，状态仍会说已装，直到宿主重启。
 - **缓存键不含 model / protocol / key**：同一个源改这些设置后，同一句、同一音色仍会命中旧片段（见 `clip-cache`）。

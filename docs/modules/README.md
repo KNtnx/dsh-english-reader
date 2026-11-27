@@ -15,7 +15,7 @@
 | `40` | 语音 | 调度 + 子进程：Edge 在线、Kokoro 本地 | `host/speech.js`、`worker.mjs` |
 | `50` | 词典与翻译 | 4 个词典源、5 个翻译源、模型兜底 | `host/dictionary.js`、`host/translate.js`、`host/model.js` |
 | `60` | 模型工具 | `english_reader`：17 个动作，让对话直接改库 | `host/tool.js` |
-| `70` | 测试与验收 | 122 项用例分四层，外加静态契约扫描 | `test/*.mjs`、`docs/TESTING*.md` |
+| `70` | 测试与验收 | 125 项用例分五层，外加静态契约扫描 | `test/*.mjs`、`docs/TESTING*.md` |
 
 ## 依赖方向（改东西时看谁会被波及）
 

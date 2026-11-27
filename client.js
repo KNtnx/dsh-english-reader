@@ -329,6 +329,8 @@ window.__ModuleLoader__.load({
         'local.cached': 'Downloaded · loads on the first sentence',
         'local.notReady': 'Not downloaded',
         'local.failed': 'Download failed',
+        'local.engineMissing': 'Local engine not installed (optional dependency). See the README troubleshooting table to add kokoro-js back, then restart. Edge voices are unaffected.',
+        'local.engineMissingShort': 'Engine not installed',
         'local.retry': 'Retry',
         'library.title': 'My dialogues',
         'library.new': 'New dialogue',
@@ -347,6 +349,7 @@ window.__ModuleLoader__.load({
         'folders.emptyWord': 'No word in this folder yet.',
         'error.notInstalled': 'The local model is not downloaded yet',
         'error.preparing': 'The local model is still being prepared — try again in a moment',
+        'error.engineMissing': 'The local voice engine is not installed — Edge voices still work',
         'error.network': 'Could not reach the speech service',
         'error.server': 'The speech service refused this sentence',
         'error.tooLong': 'This sentence is too long to synthesize',
@@ -571,6 +574,8 @@ window.__ModuleLoader__.load({
         'local.cached': '已下载 · 第一句时加载模型',
         'local.notReady': '未下载',
         'local.failed': '下载失败',
+        'local.engineMissing': '本地引擎未安装（可选依赖）。按 README「排错」补装 kokoro-js 后重启；Edge 语音不受影响。',
+        'local.engineMissingShort': '引擎未安装',
         'local.retry': '重试',
         'library.title': '我的对话',
         'library.new': '新建对话',
@@ -589,6 +594,7 @@ window.__ModuleLoader__.load({
         'folders.emptyWord': '这个收藏夹里还没有单词。',
         'error.notInstalled': '本地模型还没下载',
         'error.preparing': '本地模型还在准备中，稍等一下再试',
+        'error.engineMissing': '本地语音引擎未安装，仍可使用 Edge 语音',
         'error.network': '连不上语音服务',
         'error.server': '语音服务拒绝了这一句',
         'error.tooLong': '这一句太长，无法合成',
@@ -1658,9 +1664,11 @@ function sameLibrary(left, right) {
               ? t('local.loading')
               : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) })))
           : h('div', { className: 'er-model' },
-            h('p', { className: 'er-fine' }, model?.phase === 'error'
-              ? `${t('local.failed')}${model?.error === '' ? '' : `: ${String(model.error).slice(0, 60)}`}`
-              : fill(t('local.desc'), { size: megabytes(model?.approximateBytes ?? model?.totalBytes) })),
+            h('p', { className: 'er-fine' }, model?.code === 'engine-missing'
+              ? t('local.engineMissing')
+              : model?.phase === 'error'
+                ? `${t('local.failed')}${model?.error === '' ? '' : `: ${String(model.error).slice(0, 60)}`}`
+                : fill(t('local.desc'), { size: megabytes(model?.approximateBytes ?? model?.totalBytes) })),
             h('button', {
               type: 'button', className: 'er-cta er-cta-quiet',
               onClick: installModel,
@@ -1673,8 +1681,9 @@ function sameLibrary(left, right) {
       const localState = model === null ? '…'
         : modelBusy ? (model?.phase === 'loading' ? t('local.loading') : fill(t('local.downloading'), { n: Math.round((model?.progress ?? 0) * 100) }))
           : modelReady ? (modelLoaded ? t('local.ready') : t('local.cached'))
-            : model?.phase === 'error' ? t('local.failed')
-              : t('local.notReady')
+            : model?.code === 'engine-missing' ? t('local.engineMissingShort')
+              : model?.phase === 'error' ? t('local.failed')
+                : t('local.notReady')
 
       const sourceBackend = provider === 'edge' ? t('engine.backend.edge')
         : provider === 'local' ? t('engine.backend.local')
@@ -2694,7 +2703,9 @@ function sameLibrary(left, right) {
             if (response.status === 503) {
               const body = await response.json().catch(() => ({}))
               const failure = new Error(body.code ?? 'not-installed')
-              failure.name = body.code === 'preparing' ? 'PreparingError' : 'NotInstalledError'
+              failure.name = body.code === 'preparing' ? 'PreparingError'
+                : body.code === 'engine-missing' ? 'EngineMissingError'
+                  : 'NotInstalledError'
               throw failure
             }
             const failure = new Error(`HTTP ${response.status}`)
@@ -2793,6 +2804,12 @@ function sameLibrary(left, right) {
         if (failure instanceof Error && failure.name === 'PreparingError') {
           setStatus('idle')
           setErrorKind('preparing')
+          void refreshModel()
+          return
+        }
+        if (failure instanceof Error && failure.name === 'EngineMissingError') {
+          setStatus('idle')
+          setErrorKind('engineMissing')
           void refreshModel()
           return
         }
@@ -3489,7 +3506,7 @@ function sameLibrary(left, right) {
 
       useEffect(() => {
         if (!modelReady) return
-        setErrorKind((current) => (current === 'preparing' || current === 'notInstalled' ? '' : current))
+        setErrorKind((current) => (current === 'preparing' || current === 'notInstalled' || current === 'engineMissing' ? '' : current))
       }, [modelReady])
 
       const installModel = useCallback(async () => {

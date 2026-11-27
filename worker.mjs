@@ -16,8 +16,10 @@
  * Replies (worker → host):
  *   {"id":1,"ok":true,"audio":"<base64>","type":"audio/mpeg"}
  *   {"id":2,"ok":false,"error":"…"}
+ *   {"id":3,"ok":false,"code":"engine-missing","error":"…"}
  *   {"event":"progress","phase":"downloading","loaded":1,"total":2,"file":"…"}
  *   {"event":"phase","phase":"ready"}
+ *   {"event":"phase","phase":"error","code":"engine-missing","error":"…"}
  */
 
 import { createRequire } from 'node:module'
@@ -38,6 +40,52 @@ let kokoroPending = null
 /** @param {object} payload - one JSON object per line. */
 function emit(payload) {
   process.stdout.write(`${JSON.stringify(payload)}\n`)
+}
+
+/** The code both the event and the reply carry when the local engine is absent. */
+const ENGINE_MISSING = 'engine-missing'
+
+/** @param {unknown} error - anything thrown. @returns {string} its message. */
+function messageOf(error) {
+  return error instanceof Error ? error.message : String(error)
+}
+
+/**
+ * Whether a failure to load Kokoro means the optional dependency is absent.
+ *
+ * `kokoro-js` is an optional dependency: when its native runtime
+ * (`onnxruntime-node`) cannot be prepared at install time, pnpm skips that
+ * subtree instead of failing the whole install. The engine then fails to load
+ * with a module-resolution or native-binding error — not with a model error —
+ * so it gets a code the host and the panel can explain.
+ * @param {unknown} error - the load failure.
+ * @returns {boolean} whether the engine was never installed.
+ */
+function isEngineMissing(error) {
+  const code = String(error?.code ?? '')
+  if (code === 'ERR_MODULE_NOT_FOUND' || code === 'MODULE_NOT_FOUND') return true
+  // Module resolution and native-binding failures only: an ONNX session error
+  // names the runtime too, and that one is a model problem, not a missing engine.
+  return /cannot find (module|package)|libonnxruntime|onnxruntime_binding|cannot open shared object|NODE_MODULE_VERSION/i.test(messageOf(error))
+}
+
+/**
+ * Mark an engine-load failure so the event and the reply carry one code.
+ *
+ * The message keeps the original reason (which package is missing) and says why
+ * it is missing; the panel turns the code into its own copy, and Edge keeps
+ * working because only the local branch failed.
+ * @param {unknown} error - the load failure.
+ * @returns {{error: Error, code: string}} the failure to report.
+ */
+function classifyEngineFailure(error) {
+  if (!isEngineMissing(error)) {
+    return { error: error instanceof Error ? error : new Error(messageOf(error)), code: '' }
+  }
+  const failure = error instanceof Error ? error : new Error(messageOf(error))
+  failure.code = ENGINE_MISSING
+  failure.message = `local engine unavailable (kokoro-js is an optional dependency and was not installed): ${messageOf(error)}`
+  return { error: failure, code: ENGINE_MISSING }
 }
 
 /** Load the Edge client module the ordinary way, in an ordinary process. */
@@ -118,8 +166,14 @@ function loadKokoro(modelPath = '') {
     emit({ event: 'phase', phase: 'ready' })
     return kokoro
   })().catch((error) => {
-    emit({ event: 'phase', phase: 'error', error: error instanceof Error ? error.message : String(error) })
-    throw error
+    const failure = classifyEngineFailure(error)
+    emit({
+      event: 'phase',
+      phase: 'error',
+      ...(failure.code === '' ? {} : { code: failure.code }),
+      error: messageOf(failure.error),
+    })
+    throw failure.error
   }).finally(() => { kokoroPending = null })
   return kokoroPending
 }
@@ -315,7 +369,12 @@ process.stdin.on('data', (chunk) => {
         const result = await handle(request)
         emit({ id: request.id, ...result })
       } catch (error) {
-        emit({ id: request.id, ok: false, error: error instanceof Error ? error.message : String(error) })
+        emit({
+          id: request.id,
+          ok: false,
+          ...(error?.code === ENGINE_MISSING ? { code: ENGINE_MISSING } : {}),
+          error: messageOf(error),
+        })
       }
     }
     if (request.op === 'local' || request.op === 'preload') {

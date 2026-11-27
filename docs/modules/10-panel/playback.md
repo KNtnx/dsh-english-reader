@@ -23,6 +23,7 @@
 | 打断 | `cancelPlayback` 递增 `tokenRef`，让在途响应作废（避免慢响应当作当前句） |
 | 换音色 | 正在播就**重读当前句**；暂停中则丢掉旧片段；不在播就下次合成用新音色 |
 | 朗读单词 | `speak(text, key)` 不改动阅读器状态，只出声（词卡与单词页的喇叭） |
+| 本地引擎缺失 | `/tts` 回 503 `{code:'engine-missing'}` → `EngineMissingError` → 提示「本地语音引擎未安装」，Edge 不受影响 |
 
 ## 不变量
 
@@ -32,7 +33,7 @@
 - **一个 `<audio>` 元素**：跨视图保留，所以切到「我的单词」时正在播的句子不会断（测试守着）。
 - **`autoNext` 默认连读**：关闭是显式选择，行为写在 `docs/DETAIL.zh.md`「连读开关」。
 
-守护：`test/panel.playback.test.mjs`（6 条：重读、跳句、失败提示、连读开关等）。
+守护：`test/panel.playback.test.mjs`（7 条：重读、跳句、失败提示、可选引擎缺失、连读开关等）。
 
 ## 相邻模块
 
