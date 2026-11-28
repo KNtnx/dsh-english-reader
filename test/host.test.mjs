@@ -575,20 +575,32 @@ test('a newer commit is offered and installed as a pinned spec', async () => {
   const manager = { installBundle: async (spec) => { seen.push(spec); return { application: 'applied' } } };
   const latest = { sha, message: 'fix: something', date: '2026-11-28T00:00:00Z' };
 
-  const newer = await update.checkForUpdate({ current: '0'.repeat(40), fetch: async () => ({ ok: true, json: async () => ({ sha, commit: { message: 'fix: something', committer: { date: latest.date } } }) }) });
+  const git = async () => `${sha}\trefs/heads/main`;
+  const api = async () => ({ ok: true, json: async () => ({ commit: { message: 'fix: something', committer: { date: latest.date } } }) });
+  const newer = await update.checkForUpdate({ current: '0'.repeat(40), git, fetch: api });
   assert.equal(newer.newer, true, 'a different commit is an update');
-  const same = await update.checkForUpdate({ current: sha, fetch: async () => ({ ok: true, json: async () => ({ sha, commit: { message: 'x', committer: { date: '' } } }) }) });
+  assert.equal(newer.message, 'fix: something', 'the API only decorates the answer');
+  const same = await update.checkForUpdate({ current: sha, git, fetch: api });
   assert.equal(same.newer, false, 'the locked commit is not an update');
+  // The API answering 403 (unauthenticated quota) must not fail the check: git
+  // ls-remote needs no token.
+  const blocked = await update.checkForUpdate({ current: sha, git, fetch: async () => ({ ok: false, status: 403 }) });
+  assert.equal(blocked.latest, sha);
+  assert.equal(blocked.message, '');
 
   await update.applyUpdate(manager, sha);
   assert.deepEqual(seen, [`github:KNtnx/dsh-english-reader#${sha}`], 'the manager gets a spec pinned to the full commit');
   assert.throws(() => update.applyUpdate(manager, 'abcdef1'), /full commit/, 'a short sha is refused before anything is installed');
 })
 
-test('a failed update check never throws through the route', async () => {
+test('a repository that cannot be reached is reported, not thrown', async () => {
   const update = await import('../host/update.js');
   await assert.rejects(
-    update.checkForUpdate({ current: null, fetch: async () => ({ ok: false, status: 403 }) }),
-    /GitHub answered 403/,
+    update.checkForUpdate({ current: null, git: async () => { throw new Error('git ls-remote exited with 128') } }),
+    /exited with 128/,
+  );
+  await assert.rejects(
+    update.checkForUpdate({ current: null, git: async () => 'not a commit' }),
+    /named no commit/,
   );
 })

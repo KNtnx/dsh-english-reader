@@ -13,6 +13,7 @@
  * replaces the dependency, reloads the profile, and needs no restart.
  */
 
+import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { engineRoot } from './engine.js';
@@ -46,34 +47,76 @@ export function currentCommit(root = engineRoot()) {
 }
 
 /**
- * The newest commit on the repository's default branch.
- * @param {typeof fetch} [fetchImpl] - the fetch to use.
+ * The head of `main`, straight from Git.
+ *
+ * The GitHub commit API answers 403 without a token once the shared rate limit
+ * is used up, and a plugin updating itself must not depend on somebody's quota:
+ * `git ls-remote` needs no credential and no quota.
+ * @param {() => Promise<string>} [run] - the command, for tests.
+ * @returns {Promise<string>} the full commit.
+ */
+export function gitHead(run = defaultGit) {
+  return run().then((output) => {
+    const found = /^([0-9a-f]{40})\s/m.exec(String(output));
+    if (found === null) throw new Error('git ls-remote named no commit');
+    return found[1].toLowerCase();
+  });
+}
+
+/** The baked-in command: one ref, no credential, no progress output. */
+function defaultGit() {
+  return new Promise((resolve, reject) => {
+    const child = spawn('git', ['ls-remote', `https://github.com/${REPO}.git`, 'refs/heads/main'], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    const timer = setTimeout(() => { child.kill('SIGTERM'); reject(new Error('git ls-remote timed out')) }, 20_000);
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { output += chunk });
+    child.on('error', (error) => { clearTimeout(timer); reject(error) });
+    child.on('exit', (code) => {
+      clearTimeout(timer);
+      if (code === 0) resolve(output);
+      else reject(new Error(`git ls-remote exited with ${String(code)}`));
+    });
+  });
+}
+
+/**
+ * The newest commit on the repository's default branch, plus the commit message
+ * when the API is willing to say. The message is decoration: a 403 must not fail
+ * the check.
+ * @param {{git?: () => Promise<string>, fetch?: typeof fetch}} [options] - the lookups.
  * @returns {Promise<{sha: string, message: string, date: string}>} the commit.
  */
-export async function latestCommit(fetchImpl = fetch) {
-  const response = await fetchImpl(`https://api.github.com/repos/${REPO}/commits/main`, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'dsh-english-reader' },
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) throw new Error(`GitHub answered ${response.status}`);
-  const body = await response.json();
-  const sha = body?.sha;
-  if (typeof sha !== 'string' || !COMMIT.test(sha)) throw new Error('GitHub returned no commit');
-  return {
-    sha: sha.toLowerCase(),
-    message: String(body?.commit?.message ?? '').split('\n')[0].slice(0, 200),
-    date: String(body?.commit?.committer?.date ?? ''),
-  };
+export async function latestCommit(options = {}) {
+  const sha = await gitHead(options.git);
+  let message = '';
+  let date = '';
+  try {
+    const response = await (options.fetch ?? fetch)(`https://api.github.com/repos/${REPO}/commits/${sha}`, {
+      headers: { accept: 'application/vnd.github+json', 'user-agent': 'dsh-english-reader' },
+      signal: AbortSignal.timeout(8_000),
+    });
+    if (response.ok) {
+      const body = await response.json();
+      message = String(body?.commit?.message ?? '').split('\n')[0].slice(0, 200);
+      date = String(body?.commit?.committer?.date ?? '');
+    }
+  } catch {
+    message = '';
+  }
+  return { sha, message, date };
 }
 
 /**
  * Compare the locked commit with the newest one.
- * @param {{root?: string, current?: string|null, fetch?: typeof fetch}} [options] - where to look.
+ * @param {{root?: string, current?: string|null, git?: () => Promise<string>, fetch?: typeof fetch}} [options] - where to look.
  * @returns {Promise<{current: string|null, latest: string, newer: boolean, message: string, date: string}>} the comparison.
  */
 export async function checkForUpdate(options = {}) {
   const current = options.current === undefined ? currentCommit(options.root) : options.current;
-  const latest = await latestCommit(options.fetch);
+  const latest = await latestCommit({ git: options.git, fetch: options.fetch });
   return { current, latest: latest.sha, newer: current !== latest.sha, message: latest.message, date: latest.date };
 }
 

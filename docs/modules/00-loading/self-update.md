@@ -6,7 +6,7 @@
 
 ## 位置
 
-- `host/update.js` :: `REPO`, `COMMIT`, `currentCommit`, `latestCommit`, `checkForUpdate`, `applyUpdate`
+- `host/update.js` :: `REPO`, `COMMIT`, `currentCommit`, `gitHead`, `latestCommit`, `checkForUpdate`, `applyUpdate`
 - `host/routes.js` :: `handleUpdate`, `apply`（`pluginManager` 软依赖）
 - `host/constants.js` :: `PATHS.update`
 - `client.js` :: `UPDATE`, `checkUpdate`, `applyUpdate`, `versionBlock`, `versionNote`
@@ -15,7 +15,7 @@
 
 | 调用 | 行为 | 回答 |
 | --- | --- | --- |
-| `GET /api-dsh-english-reader/update` | 读 `pnpm-lock.yaml` 里本包的提交，`GET api.github.com/repos/…/commits/main` | `{current, latest, newer, message, date}`；取不到时 502 `{error}` |
+| `GET /api-dsh-english-reader/update` | 读 `pnpm-lock.yaml` 里本包的提交，`git ls-remote` 问 `main` 的头 | `{current, latest, newer, message, date}`；取不到时 502 `{error}` |
 | `POST /…/update` body `{sha}` | 先回 202，再 `installBundle('github:KNtnx/dsh-english-reader#<sha>')` | 202 `{started, target}`；缺 `sha` 或不是 40 位提交 → 400；没有插件管理器 → 503 |
 | 面板「引擎」区底部 | 一行版本状态 + 一个按钮：没查过显示「版本未知」，查过显示「已是最新 · sha」或「有新版本：sha」 | 按钮文案随之在「检查更新 / 立即更新 / 正在更新…」之间切换 |
 
@@ -25,7 +25,8 @@
 - **只用完整提交**：管理器的 Git 安装要求 spec `#` 后面正好是 40 位提交（`COMMIT`）；短 sha 或分支名会被它拒。面板传的是 API 回来的全 sha。
 - **比较的是提交，不是版本号**：`package.json` 的 `version` 不参与判断——从 Git 装的包按提交走，版本号只影响插件页显示。
 - **插件管理器是软依赖**：没有它（或宿主没有 `inject`）时路由照常注册，只有 POST 回 503；检查更新仍然可用。
-- **不自动检查**：打开设置不发请求，用户点了才查——GitHub 未认证接口有频率限制。
+- **不用 GitHub API 取提交**：`git ls-remote` 不要 token、不吃速率限制；未认证的 commits 接口用光配额就回 403（实测踩过）。API 只用来补一句提交说明，失败就当没有，不影响判断。
+- **不自动检查**：打开设置不发请求，用户点了才查。
 - **装上以后要重启吗**：`installBundle` 自己会重载 profile，通常不用；面板提示「重启 DSH 生效」是为了让**新代码**在客户端也干净地加载（客户端 bundle 有缓存）。
 
 ## 相邻模块
