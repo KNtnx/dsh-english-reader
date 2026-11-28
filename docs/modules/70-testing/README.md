@@ -42,7 +42,7 @@
 | 面板交互 | `smoke`(10)、`dict`(19)、`translate`(4)、`playback`(7)、`settings`(7)、`folders`(7)、`sync`(5) | 59 |
 | 合计 | | **130** |
 
-上表是 130 项代码用例的来源；`test/docs.test.mjs` 的 8 条只查文档，跑全量时合计 138 项。
+上表是 133 项代码用例的来源；`test/docs.test.mjs` 的 8 条只查文档，跑全量时合计 141 项。
 
 为什么这么分：越便宜、越靠前的层先跑——安装契约只读清单并空目录起一次 worker，静态扫描不执行代码，纯逻辑不建 DOM，宿主路由是 URL 上的纯函数，面板最贵但也最接近用户。前几层出问题时定位只要看一个函数；面板层出问题时它证明的是「用户那个动作」。
 
@@ -61,7 +61,7 @@ node --test test/
 
 ```bash
 npm install                                   # 一次性：react / react-dom / jsdom
-timeout 300 node --test test/                 # 全量，约 3 秒，138 项
+timeout 300 node --test test/                 # 全量，约 3 秒，141 项
 node --test test/panel.dict.test.mjs          # 单文件
 node --test --test-name-pattern "gloss" test/ # 单用例
 node --test test/docs.test.mjs                # 只跑文档契约

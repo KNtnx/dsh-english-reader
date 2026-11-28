@@ -9,14 +9,14 @@
 - `host/engine.js` :: `engineRoot`, `engineReady`, `engineStatus`, `installCommand`, `startEngineInstall`, `denyEngineBuilds`, `engine`, `ENGINE_SPEC`, `ENGINE_BYTES_APPROX`
 - `host/routes.js` :: `handleEngineInstall`
 - `host/constants.js` :: `PATHS.engine`
-- `host/speech.js` :: `localStatus`, `startEngineInstall`
+- `host/speech.js` :: `localStatus`, `startEngineInstall`, `startInstall`, `engineFailureOf`
 - `client.js` :: `installModel`, `installEngine`, `cancelEngine`, `renderEnginePrompt`, `engineInstalling`
 
 ## 输入 → 输出
 
 | 触发 | 行为 | 结果 |
 | --- | --- | --- |
-| `POST /local/engine` | `startEngineInstall()` 起一次后台安装（已在装则忽略） | 202 `{started:true}`；进度看 `/local/status` 的 `engine.phase` |
+| `POST /local/engine` | `startEngineInstall()` 起一次后台安装（已在装则忽略），落地后丢掉旧 worker | 202 `{started:true}`；进度看 `/local/status` 的 `engine.phase` |
 | `GET /local/status` | 检查 `engineRoot()` 下四个包是否齐全 | `engine: {phase: missing/installing/ready/error, error, log}` |
 | 面板「安装引擎并下载」 | 先弹确认（命令、约 120 MB、只装一次） | 取消：不发请求；确认：POST engine → 轮询 → `ready` 后 POST `/local/install` |
 
@@ -25,6 +25,8 @@
 - **一律 `--ignore-scripts`**：装的是包内的 CPU 二进制；`onnxruntime-node` 的 postinstall 在 CUDA 13 上必然失败，跑一次就会把包弄没。
 - **安装位置跟着解析走**：普通安装装进 profile 根（worker 在 `node_modules` 里向上解析得到它）；`link:` 检出装进插件目录（profile 解析不到它）。`engineRoot()` 从插件目录向上找 `pnpm-workspace.yaml`，找不到就退回插件目录；`ER_ENGINE_ROOT` 只给测试用。
 - **状态以磁盘为准**：`engineStatus()` 每次都检查 `kokoro-js`、`@huggingface/transformers`、`onnxruntime-node`、`sharp` 四件套；`engine.phase` 只是安装中的临时标记，安装失败后用户手动修好，下一次 status 也会自愈。
+- **清单存在不等于装好**：`engineReady` 按 Node 的规则从 `exports['.']`／`main`／`index.js` 解出入口文件，再确认它真的存在。`pnpm add` 会先把每个 `package.json` 写下来再解包，只看清单会把半成品判成 `ready`，于是 worker 在没有 `dist/` 的引擎上启动。
+- **引擎变了就换 worker**：worker 的解析结果绑在它自己那个进程上，起在引擎之前或装到一半的那个进程会一直复读同一个失败。所以 `handleEngineInstall` 在安装落地后 `stopWorker()`，`startInstall` 的失败回调也会对 `engineFailureOf(error)` 为真的情况丢掉 worker；只有模型/ONNX 这类失败才保留它。
 - **只装一次**：`startEngineInstall` 在 `installing` 时直接返回，确认框关闭后不会自己再弹；重启宿主后磁盘仍是唯一依据。
 - **失败可解释**：命令的非零退出、超时与 ENOENT 都写进 `engine.error`，面板展示并保留 README 里的手动命令。
 - **顺手关掉后续审批**：`denyEngineBuilds` 把 `onnxruntime-node@版本`、`sharp@版本` 写成 `false`，否则以后普通 `pnpm install` 会再问一次构建，批准就会把包丢掉；YAML 形状不认识时原样不动。

@@ -384,6 +384,21 @@ export function localStatus() {
 }
 
 /** Start the download in the background; the panel polls the status route. */
+/**
+ * Whether a preload failure means the worker could not see the engine it needs.
+ *
+ * Those failures are worth a fresh worker: a process spawned while `pnpm add`
+ * was still unpacking keeps the resolution it failed on, so retrying against it
+ * repeats the same error forever. Anything else (a corrupt model, an ONNX
+ * session error) is the model's problem and keeps the worker.
+ * @param {{code?: string, message?: string}} failure - what the worker reported.
+ * @returns {boolean} whether a new worker could plausibly succeed.
+ */
+export function engineFailureOf(failure) {
+  if (failure?.code === 'engine-missing') return true;
+  return /engine unavailable|cannot find package '[^']*kokoro-js|kokoro-js is an optional peer/i.test(String(failure?.message ?? ''));
+}
+
 export function startInstall() {
   if (local.phase === 'downloading' || local.phase === 'loading' || local.phase === 'ready') return;
   local.phase = 'downloading';
@@ -395,6 +410,9 @@ export function startInstall() {
     local.phase = 'error';
     local.error = error instanceof Error ? error.message : String(error);
     local.code = typeof error?.code === 'string' ? error.code : '';
+    // Retrying is the panel's only move after a failure, so the retry must not
+    // ask the process that just proved it cannot load the engine.
+    if (engineFailureOf(error)) stopWorker();
   });
 }
 

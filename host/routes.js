@@ -319,7 +319,9 @@ function handleEngineInstall(request, response) {
     response.writeHead(405, { 'content-type': 'text/plain' }).end('method not allowed');
     return;
   }
-  startEngineInstall();
+  // The worker that is running now started before the engine existed; it would
+  // answer the resuming download with the same "engine unavailable" failure.
+  void startEngineInstall().finally(() => { stopWorker(); });
   response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
     .end(JSON.stringify({ started: true }));
 }

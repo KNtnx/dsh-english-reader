@@ -30,6 +30,8 @@ export const engine = {
   phase: 'idle',
   error: '',
   log: '',
+  /** @type {Promise<void>|null} the install in flight, so callers can await it. */
+  installing: null,
 };
 
 /** @param {string} start - a directory to search upward from. @returns {string|null} the profile root. */
@@ -62,9 +64,45 @@ export function engineRoot() {
   return findProfileRoot(plugin) ?? plugin;
 }
 
+/**
+ * The file a package's manifest points at, resolved the way Node resolves it:
+ * `exports['.']` first (following `import`/`node`/`default` branches), then
+ * `main`, then `index.js`.
+ *
+ * The manifest alone is not proof of an install: pnpm writes every
+ * `package.json` before it unpacks the files, so a check that stops at the
+ * manifest calls a half-written tree ready — which is how the worker once
+ * started against a `kokoro-js` that had no `dist/` yet.
+ * @param {string} directory - the installed package directory.
+ * @returns {string|null} the entry file, or null when the manifest is unreadable.
+ */
+function entryFile(directory) {
+  let manifest;
+  try {
+    manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+  const pick = (value) => {
+    if (typeof value === 'string') return value;
+    if (value === null || typeof value !== 'object') return null;
+    for (const key of ['import', 'node', 'default', 'module', 'require']) {
+      const found = pick(value[key]);
+      if (found !== null) return found;
+    }
+    return null;
+  };
+  const exported = manifest.exports === undefined ? null : (manifest.exports['.'] ?? manifest.exports);
+  const target = pick(exported) ?? (typeof manifest.main === 'string' ? manifest.main : 'index.js');
+  return join(directory, target);
+}
+
 /** @param {string} root - where the engine is installed. @returns {boolean} whether the worker can load it. */
 export function engineReady(root = engineRoot()) {
-  return ENGINE_PACKAGES.every((name) => existsSync(join(root, 'node_modules', name, 'package.json')));
+  return ENGINE_PACKAGES.every((name) => {
+    const file = entryFile(join(root, 'node_modules', name));
+    return file !== null && existsSync(file);
+  });
 }
 
 /** Strip ANSI escapes: the web panel shows this text. */
@@ -229,14 +267,19 @@ export function denyEngineBuilds(root = engineRoot()) {
  * Start installing the engine once; the panel polls `localStatus()` for it.
  * @returns {void}
  */
+/**
+ * Install the engine in the background.
+ * @returns {Promise<void>} settles when the install ends, so a caller can drop
+ *   the worker that started before the engine existed.
+ */
 export function startEngineInstall() {
   const root = engineRoot();
-  if (engineReady(root)) return;
-  if (engine.phase === 'installing') return;
+  if (engineReady(root)) return Promise.resolve();
+  if (engine.phase === 'installing') return engine.installing ?? Promise.resolve();
   engine.phase = 'installing';
   engine.error = '';
   engine.log = '';
-  void installInto(root)
+  const running = installInto(root)
     .then(() => {
       if (!engineReady(root)) throw new Error('the engine was installed but the worker still cannot load it');
       denyEngineBuilds(root);
@@ -247,5 +290,8 @@ export function startEngineInstall() {
     .catch((error) => {
       engine.phase = 'error';
       engine.error = error instanceof Error ? error.message : String(error);
-    });
+    })
+    .finally(() => { engine.installing = null; });
+  engine.installing = running;
+  return running;
 }

@@ -33,7 +33,13 @@ test('the engine is detected by the packages the worker resolves', async () => {
     assert.equal(engine.engineStatus().phase, 'missing', 'an empty profile has no engine')
     for (const name of ['kokoro-js', '@huggingface/transformers', 'onnxruntime-node', 'sharp']) {
       mkdirSync(join(root, 'node_modules', name), { recursive: true })
-      writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: '1.0.0' }))
+      writeFileSync(join(root, 'node_modules', name, 'package.json'), JSON.stringify({ name, version: '1.0.0', main: 'index.js' }))
+    }
+    // A manifest with no file behind it is what a running `pnpm add` looks like;
+    // calling it ready is what started a worker against a half-written engine.
+    assert.equal(engine.engineStatus().phase, 'missing', 'a manifest alone is not an installed package')
+    for (const name of ['kokoro-js', '@huggingface/transformers', 'onnxruntime-node', 'sharp']) {
+      writeFileSync(join(root, 'node_modules', name, 'index.js'), 'module.exports = {}\n')
     }
     assert.equal(engine.engineStatus().phase, 'ready', 'the worker can load all four packages')
   } finally {
