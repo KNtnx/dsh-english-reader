@@ -84,7 +84,7 @@ bsk_inspect screenshot              # 三张：阅读页、设置卡片、我的
 
 ```bash
 npm install                 # 一次性：react / react-dom / jsdom 是 devDependencies
-timeout 300 node --test test/        # 全套，约 3 秒，150 项
+timeout 300 node --test test/        # 全套，约 3 秒，151 项
 ```
 
 单文件、单用例：
@@ -137,6 +137,7 @@ node --test --test-name-pattern "gloss" test/
 | 旧格式词典记录（字符串 senses、丢 example）崩卡片 | `internals.test.mjs` 词典形状用例 |
 | 断句切错缩写/小数、换行没接回、后引号丢失 | `internals.test.mjs` 7 条断句用例 |
 | 宿主没给 marks 时高亮错位 | `internals.test.mjs`「without marks the words are spread over the clip by length」 |
+| 编辑正文把标题覆盖成新的第一行 ← 保存时用 `titleFor(draft)` 重算了标题 | `panel.smoke.test.mjs`「editing the text keeps the title the dialogue already had」 |
 | 手改/工具写的归类被浏览器旧副本抹掉 ← 宿主合并只看 `addedAt`，而移动不改它 | `host.test.mjs`「a move survives a save that never saw it」「the browser and the host settle a filing the same way」（`internals.test.mjs` 同一条跨端一致性用例） |
 | 工具写完必须刷新页面才看得见 ← 面板只在挂载时读一次库 | `panel.sync.test.mjs` 四条：新增、删除、自己的写不回头、被宿主纠正后立刻读回 |
 | 卸载插件抛 `Assignment to constant variable`（只有「合成过再卸载」才走到）← 别的模块给 ESM import 绑定赋值 | `host.test.mjs`「the plugin unloads after the speech worker started」 |
@@ -172,7 +173,7 @@ jsdom 没有排版引擎：测试只能证明元素存在，证明不了它放�
 
 ```bash
 for f in index.js client.js host/*.js worker.mjs; do node --check "$f"; done
-timeout 300 node --test test/          # 69 项全绿
+timeout 300 node --test test/          # 151 项全绿
 ```
 
 改动涉及宿主或面板结构时，再加：

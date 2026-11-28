@@ -16,7 +16,7 @@
 | `splitSentences(value)` | 一行或一段 | `string[]` | `.` `!` `?` `…` 断句；缩写（`Dr.`、`e.g.`）、小数（`3.5`）不断；后引号跟着句子走 |
 | `detectMode(entries)` | 行对象数组 | `'dialogue'` / `'article'` | 两个以上**不同**标签且覆盖 ≥1/4 的行才算对话 |
 | `parseDialogue(raw, requestedMode)` | 原文 + 可选强制模式 | `{ mode, sentences: [{ text, speaker }] }` | `requestedMode` 可覆盖判定（界面上的「朗读方式」） |
-| `titleFor(raw)` | 原文 | 标题 | 取第一行正文（去掉说话人），超过 46 字截断加 `…` |
+| `titleFor(raw)` | 原文 | 标题 | 取第一行正文（去掉说话人），超过 46 字截断加 `…`；只在**新建**对话时调用 |
 | `hashText(value)` | 任意文本 | 36 进制短哈希 | FNV-1a；用来判断「这段文本是不是同一篇」 |
 
 `splitSentences('')` 返回 `[]`；空白句不会进结果。段落只能靠空行还原，没有空行的粘贴会连成一段——这是已知限制，写在这里而不是藏起来。
@@ -27,8 +27,9 @@
 - **判定只依赖文本**：不读设置、不读库；`requestedMode` 由调用方给。
 - **`parseDialogue` 的 `sentences` 顺序即朗读顺序**，`index` 就是位置，落盘就是它。
 - **`hashText` 变化意味着「换了一篇」**：`ReaderBody` 用它判断是否需要重置朗读位置。
+- **标题是一次性的推导，不是正文的预览**：`titleFor` 只在新建对话时跑一次；编辑保存（`startReading`）沿用原来的 `title`，改名是唯一改标题的入口。所以改写正文第一句不会把名字带走。
 
-守护：`test/internals.test.mjs` 的 7 条断句用例 + 对话判定 4 条 + 标题 1 条。
+守护：`test/internals.test.mjs` 的 7 条断句用例 + 对话判定 4 条 + 标题 1 条；「编辑不改标题」在 `test/panel.smoke.test.mjs`。
 
 ## 相邻模块
 

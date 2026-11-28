@@ -3859,10 +3859,21 @@ function sameLibrary(left, right) {
         const carry = sameText && Number.isInteger(existing?.index)
           ? Math.min(existing.index, parsed.sentences.length - 1)
           : 0
+        // The editor changes the text, never the name: an existing entry keeps its
+        // title so a rename survives a rewrite. Only an entry that has no title at
+        // all (an old import) gets one derived from the draft it is saving.
+        const held = String(existing?.title ?? '').trim()
         const next = existing === null
           ? [{ id, title: titleFor(raw) || t('untitled'), text: raw, mode: draftMode, index: carry, createdAt: Date.now(), updatedAt: Date.now() }, ...items]
           : items.map((item) => (item.id === id
-            ? { ...item, text: raw, mode: draftMode, title: titleFor(raw) || item.title, index: carry, updatedAt: Date.now() }
+            ? {
+              ...item,
+              text: raw,
+              mode: draftMode,
+              title: held === '' ? titleFor(raw) || t('untitled') : held,
+              index: carry,
+              updatedAt: Date.now(),
+            }
             : item))
         setItems(next.slice(0, LIBRARY_LIMIT))
         setActiveId(id)

@@ -135,6 +135,27 @@ test('an empty panel starts in the editor and can become a dialogue', async () =
   }
 })
 
+test('editing the text keeps the title the dialogue already had', async () => {
+  // The fixture's title ("Reviving a dream") is not what its text would derive
+  // ("They revive it."), so a title recomputed while saving shows up here.
+  const api = await launchPanel({ state: FIXTURE_STATE })
+  try {
+    await api.click(api.q('button[aria-label="Edit text"]'))
+    const box = api.q('.er-textarea')
+    assert.ok(box !== null, 'the reader opens the editor with the text in it')
+    await api.type(box, 'They revive it.\nThe dream returns.\nA third line.')
+    const save = api.qa('button').find((node) => node.textContent.trim() === 'Save and read')
+    assert.ok(save !== undefined, 'editing an existing dialogue saves rather than starts')
+    await api.click(save)
+    assert.equal(api.text('.er-title'), 'Reviving a dream', 'the title survived the edit')
+    await api.click(api.q('button.er-glyph[title="Library"]'))
+    assert.deepEqual(api.texts('.er-entry-title'), ['Reviving a dream'], 'the library row keeps it too')
+    assertHealthy(api, 'editor')
+  } finally {
+    await api.unmount()
+  }
+})
+
 test('the engine section lists the speech sources without breaking the page', async () => {
   const api = await launchPanel({ state: FIXTURE_STATE })
   try {

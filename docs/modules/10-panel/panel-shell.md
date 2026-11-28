@@ -7,6 +7,7 @@
 ## 位置
 
 - `client.js` :: `ReaderBody`, `ui`, `view`, `returnView`, `goView`, `onKeyDown`, `startCardDrag`, `rootRef`, `pageBox`, `effectiveScale`, `startResize`
+- `client.js` :: `startReading`, `editActive`, `editItem`, `cancelEditor`（编辑器与保存）
 - `client.js` :: `Reader`, `ReaderBoot`
 
 ## 输入 → 输出
@@ -27,6 +28,7 @@
 - **它自己不能调 hook**：`ReaderBody` 是被 `Reader` 当普通函数调用的（为了错误边界能抓住渲染异常），外壳里再加 `useState` 会违反 hook 规则。新增状态请放进 `useSharedStore` / `usePlayback` / `useWordCard`，或新建 hook。
 - **`ui` 是唯一出口**：视图不许闭包捕获状态变量，所有 `setter` 与派生值都经 `ui` 传下去——这也是 `test/views.test.mjs` 能静态检查的前提。
 - **`view` 切换不动数据**：`goView` 只换视图；`returnView` 记住「从哪个页进来的」，返回时回到原页。
+- **编辑器只改正文，不改名字**：`startReading` 保存已有对话时沿用 `item.title`，只有本来没有标题的旧条目才用 `titleFor(draft)` 补一个。
 - **一个 `<audio>` 元素挂在最外层**：跨视图保留，切页不断播。
 - **`Reader` 是错误边界**：渲染抛错时显示堆栈，而不是白屏。
 
