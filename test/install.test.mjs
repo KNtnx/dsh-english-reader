@@ -231,3 +231,37 @@ test('the reap waits for the package to disappear and stands down on a reload', 
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('a mirror without the pinned version is retried from npm', async () => {
+  // `pnpm add` in a profile resolves the whole importer, so a regional mirror
+  // that has not synced the installed plugin fails the engine install with
+  // "No matching version" — the engine itself is present. Retrying against npm's
+  // registry is the fix; nothing about the plugin version changes.
+  const { registryRetryable, withOfficialRegistry, installCommand, OFFICIAL_REGISTRY } = await import('../host/engine.js');
+  assert.equal(registryRetryable(new Error('Command failed: adding a new package\nFailed to resolve dependency tree: No matching version')), true);
+  assert.equal(registryRetryable(new Error('ERR_PNPM_NO_MATCHING_VERSION  No matching version found for dsh-english-reader@0.2.4')), true);
+  assert.equal(registryRetryable(new Error('Command failed: ENOENT pnpm')), false, 'a missing pnpm is not a registry problem');
+  assert.equal(registryRetryable(new Error('the engine install timed out after 15 minutes')), false);
+
+  const root = await mkdtemp(join(tmpdir(), 'er-retry-'));
+  try {
+    await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\n');
+    // The retry itself: the first run fails the way a lagging mirror does, and
+    // the second attempt must carry the registry flag.
+    const seen = [];
+    const { installInto } = await import('../host/engine.js');
+    await installInto(root, async (_root, command) => {
+      seen.push(command);
+      if (seen.length === 1) throw new Error('Failed to resolve dependency tree: No matching version');
+    });
+    assert.equal(seen.length, 2, 'a resolution failure is retried once');
+    assert.ok(seen[1].args.includes(`--config.registry=${OFFICIAL_REGISTRY}`), 'the retry asks npm registry');
+    const command = installCommand(root);
+    assert.equal(command.command, 'pnpm');
+    const retry = withOfficialRegistry(command);
+    assert.ok(retry.args.includes(`--config.registry=${OFFICIAL_REGISTRY}`), 'the retry names npm registry');
+    assert.ok(retry.args.includes('--ignore-scripts'), 'the retry keeps the engine out of postinstall');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+})

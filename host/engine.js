@@ -20,6 +20,9 @@ import { fileURLToPath } from 'node:url';
 /** The packages the worker needs to load the local engine. */
 const ENGINE_PACKAGES = ['kokoro-js', '@huggingface/transformers', 'onnxruntime-node', 'sharp'];
 
+/** npm's own registry: the one fallback a resolution failure can be retried against. */
+export const OFFICIAL_REGISTRY = 'https://registry.npmjs.org/';
+
 /** What `pnpm add` would install, and the size the panel warns about. */
 export const ENGINE_SPEC = 'kokoro-js@^1.2.1';
 export const ENGINE_BYTES_APPROX = 120 * 1024 * 1024;
@@ -152,6 +155,35 @@ export function installCommand(root) {
   };
 }
 
+/**
+ * Whether a failure is the registry's incomplete copy rather than the package.
+ *
+ * `pnpm add` in a profile resolves the whole importer, so the plugin's own
+ * dependency is part of that tree: a regional mirror that has not synced the
+ * installed version fails the engine install with `No matching version`, even
+ * though the engine package itself is there. Another registry fixes that one.
+ * @param {unknown} error - the failed install.
+ * @returns {boolean} whether the install is worth retrying from npm's registry.
+ */
+export function registryRetryable(error) {
+  const message = String(error instanceof Error ? error.message : error);
+  return /No matching version|ERR_PNPM_NO_MATCHING_VERSION|Failed to resolve dependency tree/i.test(message);
+}
+
+/**
+ * The same command, asked to resolve from npm's own registry.
+ * @param {{command: string, args: string[], label: string}} command - the first attempt.
+ * @returns {{command: string, args: string[], label: string}} the retry, or the command itself when it is not pnpm.
+ */
+export function withOfficialRegistry(command) {
+  if (command.command !== 'pnpm') return command;
+  return {
+    command: command.command,
+    args: [...command.args, `--config.registry=${OFFICIAL_REGISTRY}`],
+    label: `${command.label} (npm registry)`,
+  };
+}
+
 /** Run one install command, streaming its tail into the state for the panel. */
 function runInstall(root, command) {
   return new Promise((resolvePromise, reject) => {
@@ -187,18 +219,30 @@ function runInstall(root, command) {
   });
 }
 
-/** Install into the directory, falling back to npm's bundled CLI when pnpm is absent. */
-async function installInto(root) {
+/**
+ * Install into the directory, falling back to npm's bundled CLI when pnpm is
+ * absent, and to npm's registry when a mirror lacks the version the profile pins.
+ * @param {string} root - where the engine goes.
+ * @param {(root: string, command: {command: string, args: string[], label: string}) => Promise<void>} [run] - the runner, for tests.
+ * @returns {Promise<void>} resolves when the engine is installed.
+ */
+export async function installInto(root, run = runInstall) {
   const command = installCommand(root);
   try {
-    await runInstall(root, command);
+    await run(root, command);
   } catch (error) {
+    // The mirror answered, just without the version the profile pins: ask npm's
+    // registry once before giving up, because that copy is always complete.
+    if (registryRetryable(error) && command.command === 'pnpm') {
+      await run(root, withOfficialRegistry(command));
+      return;
+    }
     if (error?.code !== 'ENOENT' || command.command !== 'pnpm') throw error;
     const fallback = installCommand(root);
     if (fallback.command === 'pnpm') {
       throw new Error('pnpm was not found; run `pnpm add --ignore-scripts kokoro-js@^1.2.1` in the profile directory instead');
     }
-    await runInstall(root, fallback);
+    await run(root, fallback);
   }
 }
 

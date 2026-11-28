@@ -6,7 +6,7 @@
 
 ## 位置
 
-- `host/engine.js` :: `engineRoot`, `engineReady`, `engineStatus`, `installCommand`, `startEngineInstall`, `denyEngineBuilds`, `engine`, `ENGINE_SPEC`, `ENGINE_BYTES_APPROX`
+- `host/engine.js` :: `engineRoot`, `engineReady`, `engineStatus`, `installCommand`, `installInto`, `registryRetryable`, `withOfficialRegistry`, `startEngineInstall`, `denyEngineBuilds`, `engine`, `ENGINE_SPEC`, `ENGINE_BYTES_APPROX`, `OFFICIAL_REGISTRY`
 - `host/routes.js` :: `handleEngineInstall`, `scheduleUninstallReap`
 - `host/uninstall.js` :: `pluginDirectory`, `removalCommand`, `removeModels`, `removeEngine`, `reapNow`, `scheduleUninstallReap`
 - `host/constants.js` :: `PATHS.engine`
@@ -30,6 +30,7 @@
 - **清单存在不等于装好**：`engineReady` 按 Node 的规则从 `exports['.']`／`main`／`index.js` 解出入口文件，再确认它真的存在。`pnpm add` 会先把每个 `package.json` 写下来再解包，只看清单会把半成品判成 `ready`，于是 worker 在没有 `dist/` 的引擎上启动。
 - **引擎变了就换 worker**：worker 的解析结果绑在它自己那个进程上，起在引擎之前或装到一半的那个进程会一直复读同一个失败。所以 `handleEngineInstall` 在安装落地后 `stopWorker()`，`startInstall` 的失败回调也会对 `engineFailureOf(error)` 为真的情况丢掉 worker；只有模型/ONNX 这类失败才保留它。
 - **只装一次**：`startEngineInstall` 在 `installing` 时直接返回，确认框关闭后不会自己再弹；重启宿主后磁盘仍是唯一依据。
+- **镜像缺版本就用官方源重试一次**：`pnpm add` 在 profile 里解析的是**整棵依赖树**，包括插件自己（`dsh-english-reader@<版本>`）。国内镜像常常晚几分钟到几小时才同步新版本，于是引擎安装会以 `No matching version` 失败——明明 `kokoro-js` 在镜像上是有的。`installInto` 认出这类解析失败（`registryRetryable`）后带 `--config.registry=https://registry.npmjs.org/` 重试一次；`--ignore-scripts` 保留，所以 CUDA 补丁仍然不会跑。
 - **失败可解释**：命令的非零退出、超时与 ENOENT 都写进 `engine.error`，面板展示并保留 README 里的手动命令。
 - **顺手关掉后续审批**：`denyEngineBuilds` 把 `onnxruntime-node@版本`、`sharp@版本` 写成 `false`，否则以后普通 `pnpm install` 会再问一次构建，批准就会把包丢掉；YAML 形状不认识时原样不动。
 - **只碰安装面**：会改 profile 的 `package.json`/lockfile（`pnpm add` 的副作用）与 `pnpm-workspace.yaml`；不碰 `$DSH_HOME` 的库、密钥与模型。
