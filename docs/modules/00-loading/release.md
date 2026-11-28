@@ -27,6 +27,8 @@
 - **npm 装必须 bump**：同一个版本号发不上去（`E403 cannot publish over`），而且插件页按版本号比较，不 bump 等于没更新。`npm version --no-git-tag-version` 只改 `package.json`，标签我们不要。
 - **Git 装不看版本号**：面板比的是提交（`git ls-remote` + 锁文件里的 `tar.gz/<sha>`）。
 - **首次发布有传播延迟**：新包名第一次 publish 后，元数据先出现（`npm view` 有版本），**tarball 仍 404 几分钟**（实测约 6 分钟）。判断"发好了"要用 `npm pack dsh-english-reader@<版本>`，不是 `npm view`。
+- **国内镜像不一定同步**：npmmirror 的 `dist-tags.latest` 曾长时间停在 `0.0.0-stage`（占位版本），于是「添加插件」填包名会解析到空壳、报 **`declares no dsh.bundle`**，填 `名字@版本` 则报「未找到相关插件」。判断某个源有没有：`npm view <包> dist-tags.latest --registry=<源>`。
+- **官方源的兜底写在 profile 里**：`$DSH_HOME/profiles/<profile>/cordis.patch.yml` 追加一条 `- id: plugin-manager` / `config.fallbackRegistries: [https://registry.npmjs.org/]`。这样「添加插件」下拉会多出「npm 官方源」，版本查询也会在镜像查不到时回落官方源。**改完要重启 DSH**（plugin-manager 在启动时读配置）。
 - **首次发布会留一个 `0.0.0-stage` 占位版本**：npm 给新包名建的是"暂存占位"（`Temporary package placeholder for staged publishing`），有一段时间 `dist-tags.latest` 指着它。此时在「添加插件」里填包名会报 **`declares no dsh.bundle`**——因为占位包的清单里没有 `dsh` 字段。修法是把标签指回真实版本：`npm dist-tag add dsh-english-reader@0.2.3 latest`，然后用 `npm view <包> version` + `npm pack <包>@<版本>` 双重确认（`npm pack` 能下下来才算真的可用）。
 - **2FA**：`npm login` 拿到的登录 token 不带"免 2FA 证明"，直接 publish 会被拦；要么 `--otp=验证器6位`，要么用带 *Bypass 2FA* 的 Granular Access Token 写进 `~/.npmrc`。
 - **别把测试发上去**：`files` 只列运行期文件与文档，`test/` 与 `package-lock.json` 不进包（87 个文件、约 871 KB）。

@@ -198,6 +198,7 @@ The model and the engine are installed on demand, so they leave with the plugin 
 | "Local engine not installed" | Press **Install engine and download** on the local-model card; the panel explains and installs it. If that fails, use the manual command under "The local engine and install scripts" |
 | Local model stuck at "not downloaded" | Press Download and wait for 100%; models live in `$DSH_HOME/dsh-english-reader/models/` |
 | Custom API returns 400 / 401 | Use **Test** in the editor — it names the path and the original response. 401 means the vendor rejected the key |
+| Adding the plugin by name says `declares no dsh.bundle` or "no matching plugin" | The install source is a regional mirror that has not synced this version yet. Pick the official npm registry in **Install source** (see `docs/modules/00-loading/release.md`), or enter `https://registry.npmjs.org/` under **Custom registry** |
 | A voice is ignored | Some vendors silently fall back on unknown voices; try a source that reports errors |
 | Word highlight does not move | Only Edge reports word timestamps; other sources estimate from length |
 | A lookup always says nothing was found | Dictionaries need a network; check the dictionary setting first, and note that an unusual phrase falls back to translation |
