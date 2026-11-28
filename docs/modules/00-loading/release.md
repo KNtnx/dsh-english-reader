@@ -19,6 +19,7 @@
 | 想做什么 | 命令 | 结果 |
 | --- | --- | --- |
 | 发一个 npm 版本 | `npm version 0.2.4 --no-git-tag-version` → 提交推送 → `npm publish --registry=https://registry.npmjs.org` | 新版本出现在 registry；旧版本用户能在插件页看到更新 |
+| 给这一版打标签 | `git tag -a 0.2.4 -m 0.2.4` → `git push origin 0.2.4` | GitHub 上有一个以版本号命名的 tag，能对上发布的那次提交 |
 | 只发 Git | `git push origin main` | 面板「检查更新」立刻能看到新提交 |
 | 另一台设备更新 | 插件页「更新到 x.y.z」（npm）或面板「立即更新」（两种都行）/ `dsh plugin --profile web update dsh-english-reader`（Git） | 几秒后本机就是新版本 |
 
@@ -26,7 +27,7 @@
 
 - **确认没有 bug 才发**：一次改动一次发布是反的——今天一天发了七版，全是为了修上一版带出去的毛病，最后还得回头收拾版本号。顺序是：改完 → 跑全量测试 → 自己按用户路径走一遍 → 只在「这批改动要给别人用」时才 bump 并发一次。中间的小修留在工作区，凑成一批再发。
 - **版本号只往前走**：0.2.x 发布过就不能再发 0.1.0（npm 会拒；硬发要用 `--tag latest`，然后一堆东西指向反了）。要「归并版本」，正确做法是继续往上 bump 一版，旧的留作历史；删旧版本要 OTP，且删之前所有装过的人得先切到新版本，否则他们的精确 pin 解析失败。
-- **npm 装必须 bump**：同一个版本号发不上去（`E403 cannot publish over`），而且插件页按版本号比较，不 bump 等于没更新。`npm version --no-git-tag-version` 只改 `package.json`，标签我们不要。
+- **npm 装必须 bump**：同一个版本号发不上去（`E403 cannot publish over`），而且插件页按版本号比较，不 bump 等于没更新。`npm version --no-git-tag-version` 只改 `package.json`；版本提交推上去之后，再单独 `git tag -a <版本号> -m <版本号>` 打一个 annotated tag——`npm version` 自己打的那个指向还不存在的提交，所以关掉它。
 - **Git 装不看版本号**：面板比的是提交（`git ls-remote` + 锁文件里的 `tar.gz/<sha>`）。
 - **首次发布有传播延迟**：新包名第一次 publish 后，元数据先出现（`npm view` 有版本），**tarball 仍 404 几分钟**（实测约 6 分钟）。判断"发好了"要用 `npm pack dsh-english-reader@<版本>`，不是 `npm view`。
 - **国内镜像不一定同步**：npmmirror 的 `dist-tags.latest` 曾长时间停在 `0.0.0-stage`（占位版本），于是「添加插件」填包名会解析到空壳、报 **`declares no dsh.bundle`**，填 `名字@版本` 则报「未找到相关插件」。判断某个源有没有：`npm view <包> dist-tags.latest --registry=<源>`。
