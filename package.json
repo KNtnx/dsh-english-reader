@@ -1,6 +1,6 @@
 {
   "name": "dsh-english-reader",
-  "version": "0.2.7",
+  "version": "0.1.0",
   "type": "module",
   "description": "Paste an English dialogue, hear it read by two alternating Microsoft Edge voices, and pick up exactly where you stopped.",
   "exports": {
