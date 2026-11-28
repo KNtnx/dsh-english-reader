@@ -53,6 +53,7 @@ export const PATHS = {
   translate: '/api-dsh-english-reader/translate',
   translateOptions: '/api-dsh-english-reader/translate/options',
   translateModels: '/api-dsh-english-reader/translate/models',
+  update: '/api-dsh-english-reader/update',
 };
 
 /** Longest library payload worth keeping; a full library is far smaller. */

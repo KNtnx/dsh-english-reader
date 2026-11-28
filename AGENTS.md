@@ -15,7 +15,7 @@
 
 ```bash
 npm install                                    # react / react-dom / jsdom
-timeout 300 node --test test/                  # 全量，约 3 秒，144 项
+timeout 300 node --test test/                  # 全量，约 3 秒，147 项
 node --test test/panel.dict.test.mjs           # 单文件
 node --test --test-name-pattern "gloss" test/  # 单用例
 ```
@@ -45,6 +45,7 @@ node --test --test-name-pattern "gloss" test/  # 单用例
 | 翻译来源、模型翻译 | [50-dictionary/translate-providers](./docs/modules/50-dictionary/translate-providers.md) |
 | `english_reader` 工具的动作 | [60-tool](./docs/modules/60-tool/README.md) |
 | 写测试、跑测试、为什么有这些用例 | [70-testing](./docs/modules/70-testing/README.md) + `docs/TESTING.zh.md` |
+| 插件自己更新、插件页没有更新按钮 | [00-loading/self-update](./docs/modules/00-loading/self-update.md) |
 | 插件装不上、本地引擎缺失、安装期依赖报错 | [70-testing/install-contract](./docs/modules/70-testing/install-contract.md) + README 的安装与排错段 |
 
 ## 模块地图

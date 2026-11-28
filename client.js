@@ -21,6 +21,7 @@ window.__ModuleLoader__.load({
     const LOCAL_STATUS = '/api-dsh-english-reader/local/status'
     const LOCAL_INSTALL = '/api-dsh-english-reader/local/install'
     const LOCAL_ENGINE = '/api-dsh-english-reader/local/engine'
+    const UPDATE = '/api-dsh-english-reader/update'
     const VALIDATE = '/api-dsh-english-reader/tts/validate'
     const MODELS = '/api-dsh-english-reader/tts/models'
     const VOICES = '/api-dsh-english-reader/tts/voices'
@@ -323,6 +324,16 @@ window.__ModuleLoader__.load({
         'provider.edge': 'Edge online',
         'provider.local': 'Local model',
         'local.desc': 'Kokoro-82M · about {size} MB · runs offline on this machine',
+        'version.label': 'Version',
+        'version.check': 'Check for updates',
+        'version.checking': 'Checking…',
+        'version.upToDate': 'Up to date',
+        'version.available': 'Update available: {sha}',
+        'version.apply': 'Update now',
+        'version.applying': 'Updating…',
+        'version.applied': 'Update started — restart DSH to finish',
+        'version.failed': 'Update check failed',
+        'version.unknown': 'Version unknown',
         'local.download': 'Download and use',
         'local.downloading': 'Downloading {n}%',
         'local.loading': 'Loading the model…',
@@ -574,6 +585,16 @@ window.__ModuleLoader__.load({
         'provider.edge': 'Edge 在线',
         'provider.local': '本地模型',
         'local.desc': 'Kokoro-82M · 约 {size} MB · 在这台机器上离线运行',
+        'version.label': '版本',
+        'version.check': '检查更新',
+        'version.checking': '正在检查…',
+        'version.upToDate': '已是最新',
+        'version.available': '有新版本：{sha}',
+        'version.apply': '立即更新',
+        'version.applying': '正在更新…',
+        'version.applied': '已开始更新，重启 DSH 生效',
+        'version.failed': '检查更新失败',
+        'version.unknown': '版本未知',
         'local.download': '下载并使用',
         'local.downloading': '正在下载 {n}%',
         'local.loading': '正在加载模型…',
@@ -1654,7 +1675,7 @@ function sameLibrary(left, right) {
 
   /** The settingsCard block, split out so the panel body stays readable. */
   function renderSettingsCard(ui) {
-    const { activeSource, card, collinsDraft, collinsReady, collinsSaved, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, loadVoices, loadingVoices, model, modelChoices, modelOf, modelsByProvider, onKeyDown, provider, rememberVoice, routeOf, routes, saveCollinsKey, sections, setAddKind, setAddOpen, setCollinsDraft, setCollinsSaved, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, settingsOpen, sheetPlace, showTranslation, sources, t, toggle, toggleSection, toggleTranslation, total, translateError, translateModel, translateOptions, translateRoute, translateSource, voiceA, voiceB, voiceChoices, voices, voicesListed, modelReady, modelBusy, installModel, engineInstalling, modelDir, renamingSource, modelLoaded, nameDraft, openSourceEditor, removeSource, removed, renameSource, setNameDraft, setRenamingSource, switchSource } = ui
+    const { activeSource, card, collinsDraft, collinsReady, collinsSaved, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, loadVoices, loadingVoices, model, modelChoices, modelOf, modelsByProvider, onKeyDown, provider, rememberVoice, routeOf, routes, saveCollinsKey, sections, setAddKind, setAddOpen, setCollinsDraft, setCollinsSaved, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, settingsOpen, sheetPlace, showTranslation, sources, t, toggle, toggleSection, toggleTranslation, total, translateError, translateModel, translateOptions, translateRoute, translateSource, voiceA, voiceB, voiceChoices, voices, voicesListed, modelReady, modelBusy, installModel, engineInstalling, modelDir, renamingSource, modelLoaded, nameDraft, openSourceEditor, update, updateBusy, checkUpdate, applyUpdate, removeSource, removed, renameSource, setNameDraft, setRenamingSource, switchSource } = ui
 
       // --------------------------------------------------------------- settings
       // Once the model is usable the facts already say so; this block is only the
@@ -1695,6 +1716,31 @@ function sameLibrary(left, right) {
               : model?.code === 'engine-missing'
                 ? t('engine.installHint')
                 : model?.phase === 'error' ? t('local.retry') : t('local.download')))
+
+      // The plugin page has no update button for a Git-installed bundle: DSH
+      // offers one only to catalog entries with a known target version. So the
+      // panel carries it, and the host does the comparing and the installing.
+      const versionNote = update === null
+        ? t('version.unknown')
+        : update.phase === 'checking'
+          ? t('version.checking')
+          : update.phase === 'error'
+            ? `${t('version.failed')}: ${String(update.error ?? '').slice(0, 60)}`
+            : update.phase === 'applied'
+              ? t('version.applied')
+              : update.newer === true
+                ? fill(t('version.available'), { sha: String(update.latest ?? '').slice(0, 7) })
+                : `${t('version.upToDate')} · ${String(update.current ?? '').slice(0, 7)}`
+      const versionBlock = h('div', { className: 'er-version' },
+        h('p', { className: 'er-fine' }, `${t('version.label')} · ${versionNote}`),
+        h('button', {
+          type: 'button', className: 'er-cta er-cta-quiet',
+          disabled: updateBusy === true || update?.phase === 'checking' || update?.phase === 'applied',
+          onClick: () => { void (update?.newer === true ? applyUpdate() : checkUpdate()) },
+        }, updateBusy === true
+          ? t('version.applying')
+          : update?.phase === 'applied' ? t('version.applied')
+            : update?.newer === true ? t('version.apply') : t('version.check')))
 
       const factRow = (label, value) => h('div', { className: 'er-fact' },
         h('span', { className: 'er-fact-label' }, label),
@@ -1798,7 +1844,9 @@ function sameLibrary(left, right) {
                 factRow(t('engine.backend'), sourceBackend),
                 factRow(provider === 'local' ? t('engine.folder') : t('engine.connection'), sourceLink),
                 factRow(t('engine.state'), sourceState)),
-              provider === 'local' ? modelNote : null),
+              provider === 'local' ? modelNote : null,
+              versionBlock),
+
             h(Section, { title: t('settings.voices'), open: sections.voice === true, onToggle: () => toggleSection('voice') },
               activeSource.kind !== 'api' ? null : h('datalist', { id: 'er-voice-list' },
                 voiceChoices.map((entry) => h('option', { key: entry.id, value: entry.id },
@@ -3037,6 +3085,9 @@ function sameLibrary(left, right) {
       const [addOpen, setAddOpen] = useState(false)
       /** Set while the add dialog is waiting for the bundled download to land. */
       const [awaitBundled, setAwaitBundled] = useState(false)
+      /** The last update check: `{phase, current, latest, newer, message, error}`. */
+      const [update, setUpdate] = useState(null)
+      const [updateBusy, setUpdateBusy] = useState(false)
       /** Why the last attempt to add a source was refused. */
       const [addError, setAddError] = useState('')
       const [validating, setValidating] = useState(false)
@@ -3600,6 +3651,41 @@ function sameLibrary(left, right) {
         setModel((current) => (current === null ? current : { ...current, phase: 'downloading', installed: true }))
         void refreshModel()
       }, [model?.code, refreshModel])
+
+      // The plugin page cannot offer this update: it shows a button only for
+      // catalog entries with a known target version, and a Git install has none.
+      const checkUpdate = useCallback(async () => {
+        setUpdate({ phase: 'checking' })
+        try {
+          const response = await fetch(UPDATE, { cache: 'no-store' })
+          const body = await response.json()
+          if (!response.ok) throw new Error(body?.error ?? `HTTP ${String(response.status)}`)
+          setUpdate({ phase: 'ready', ...body })
+        } catch (error) {
+          setUpdate({ phase: 'error', error: error instanceof Error ? error.message : String(error) })
+        }
+      }, [])
+
+      const applyUpdate = useCallback(async () => {
+        const target = update?.latest
+        if (typeof target !== 'string' || update?.newer !== true) return
+        setUpdateBusy(true)
+        try {
+          const response = await fetch(UPDATE, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ sha: target }),
+          })
+          if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
+          setUpdate((current) => ({ ...current, phase: 'applied' }))
+          setNoticeKey('version.applied')
+        } catch (error) {
+          setUpdate({ phase: 'error', error: error instanceof Error ? error.message : String(error) })
+          setNoticeKey('version.failed')
+        } finally {
+          setUpdateBusy(false)
+        }
+      }, [update?.latest, update?.newer, setNoticeKey])
 
       const engineResume = useRef(false)
 
@@ -4551,7 +4637,7 @@ function sameLibrary(left, right) {
         window.addEventListener('mouseup', end)
       }
 
-      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, cancelEngine, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dialogueFolders, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineInstalling, engineLabel, enginePrompt, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installEngine, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, wordFolders, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef, autoScroll, setAutoScroll }
+      const ui = { DEFAULT_WIDTH, FONT_STEPS, WIDTH_STEPS, activeId, activeSource, addError, addKind, addOpen, addSource, aiEntries, apiModels, autoNext, awaitBundled, cancelEditor, cancelEngine, capsuleRef, card, cardEntry, cardError, cardState, closeWord, collinsDraft, collinsReady, collinsSaved, columnActual, columnWidth, confirmDelete, customPct, customPx, dict, dictCn, dictEn, dictModelCn, dictModelEn, dictShow, dialogueFolders, doc, draft, draftBaseUrl, draftDoc, draftId, draftKey, draftMode, draftModel, draftName, draftPath, draftProtocol, dropWord, editActive, editItem, editingFont, editingId, editingSource, editingWidth, engineInstalling, engineLabel, enginePrompt, entryKey, errorKind, fetchModels, fetchingModels, fontDraft, fontScale, goView, headerNote, headerTitle, index, installEngine, installModel, items, listRef, loadVoices, loadWordEntry, loadingVoices, lookUp, loop, model, modelBusy, modelChoices, modelDir, modelLoaded, modelOf, modelReady, modelsByProvider, nameDraft, newDialogue, noticeKey, onKeyDown, openEntry, openItem, openLoading, openPinnedWord, openSettings, openSourceEditor, openTokenRef, openWordId, pageBox, panelHeight, panelWidth, pickModelDir, playAt, probe, provider, query, rate, rememberVoice, removeItem, removeSource, renameItem, renameSource, renamingItem, renamingSource, renderLine, returnView, routeOf, routes, rowRefs, saveCollinsKey, saveWord, sayingKey, sections, sentences, setAddKind, setAddOpen, setApiModels, setAutoNext, setAwaitBundled, setCard, setCardEntry, setCardState, setCollinsDraft, setCollinsSaved, setColumnWidth, setConfirmDelete, setCustomPct, setCustomPx, setDictCn, setDictEn, setDictModelCn, setDictModelEn, setDictShow, setDraft, setDraftBaseUrl, setDraftId, setDraftKey, setDraftMode, setDraftModel, setDraftName, setDraftPath, setDraftProtocol, setEditingFont, setEditingWidth, setFontDraft, setFontScale, setLoop, setNameDraft, setOpenEntry, setOpenLoading, setOpenWordId, setProbe, setQuery, setRate, setRemoved, setRenamingItem, setRenamingSource, setSettingsOpen, setTranslateModel, setTranslateRoute, setTranslateSource, setVoiceA, setVoiceB, setWidthDraft, setWordFilter, setWords, settingsOpen, sheetPlace, showTranslation, showing, sources, speak, startReading, status, step, switchSource, t, testEndpoint, toggle, togglePin, toggleSection, toggleTranslation, toggleWord, total, translateError, translateModel, translateOptions, translateRoute, translateSource, translating, translation, validating, view, visibleWords, voiceA, voiceB, voiceChoices, voiceLabel, voices, voicesListed, widthDraft, wordFilter, wordFolders, words, removed, cardHeight, windowHeight, windowWidth, startCardDrag, closeCard, cardRef, autoScroll, setAutoScroll, update, updateBusy, checkUpdate, applyUpdate }
 
       const body = view === 'words' ? renderWordsPage(ui)
         : view === 'library' ? renderLibraryPage(ui)
@@ -4769,6 +4855,8 @@ function sameLibrary(left, right) {
 .er-dialog-body{overflow-y:auto;padding:12px 14px 14px}
 .er-dialog-error{margin:0;padding:0 16px 10px;font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1.5px);line-height:1.5;text-align:center;color:var(--dsw-alias-state-error-primary,#c0392b);overflow-wrap:anywhere}
 .er-dialog-foot{display:flex;justify-content:flex-end;gap:6px;padding:0 14px 14px}
+.er-version{display:flex;flex-direction:column;gap:6px;margin-top:8px;padding-top:8px;border-top:1px solid var(--dsw-alias-border-l2,#e5e7eb)}
+.er-version .er-cta{align-self:flex-start}
 .er-bundled{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:10px;padding:4px 7px;border:0.5px solid var(--dsw-alias-border-l3,var(--dsw-alias-border-l1,#dcdcdc));border-radius:var(--dsw-radius-xs,5px)}
 .er-bundled-hint{flex:1 0 100%;margin:0}
 .er-bundled-title{font-size:calc(var(--dsh-content-font-size-secondary,13px) - 1.5px);font-weight:500;white-space:nowrap}

@@ -6,6 +6,7 @@ import { defaultModelRoute, secret, targetLanguage } from './model.js';
 import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startEngineInstall, startInstall, stopWorker, synthesize, synthesizeApi } from './speech.js';
 import { translateWithAzure, translateWithGoogle, translateWithModel, translateWithTencent, translateWithVolcengine } from './translate.js';
 import { scheduleUninstallReap } from './uninstall.js';
+import { applyUpdate, checkForUpdate } from './update.js';
 
 /** Required host services: the HTTP route registry. */
 export const inject = ['webServer'];
@@ -308,6 +309,58 @@ function handleInstall(request, response) {
   startInstall();
   response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
     .end(JSON.stringify({ started: true }));
+}
+
+/**
+ * Report the locked commit against the repository, or install a chosen one.
+ *
+ * The page cannot offer this update itself: DSH shows an update button only for
+ * catalog entries with a known target version, and a Git-installed package has
+ * none. So the panel asks here.
+ * @param {import('node:http').IncomingMessage} request - the incoming request.
+ * @param {import('node:http').ServerResponse} response - the response to complete.
+ * @param {() => any} managerOf - reads the plugin manager service, when present.
+ */
+function handleUpdate(request, response, managerOf) {
+  if (request.method === 'GET') {
+    void checkForUpdate()
+      .then((result) => {
+        response.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+          .end(JSON.stringify(result));
+      })
+      .catch((error) => {
+        response.writeHead(502, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+          .end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      });
+    return;
+  }
+  if (request.method !== 'POST') {
+    response.writeHead(405, { 'content-type': 'text/plain' }).end('method not allowed');
+    return;
+  }
+  void readBody(request, 4096).then((raw) => {
+    let body = null;
+    try {
+      body = JSON.parse(raw);
+    } catch {
+      body = null;
+    }
+    const sha = typeof body?.sha === 'string' ? body.sha : '';
+    if (!/^[0-9a-f]{40}$/i.test(sha)) {
+      response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'a full commit is required' }));
+      return;
+    }
+    const manager = managerOf();
+    if (manager === null) {
+      response.writeHead(503, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'the plugin manager is not available' }));
+      return;
+    }
+    // Answer first: installing replaces this very package, so the reply must be
+    // on the wire before the profile reloads.
+    response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+      .end(JSON.stringify({ started: true, target: sha }));
+    void applyUpdate(manager, sha).catch(() => {});
+  });
 }
 
 /**
@@ -955,6 +1008,7 @@ const ROUTES = [
   { path: PATHS.status, resource: handleStatus, effect: 'english-reader: local status route' },
   { path: PATHS.install, handler: handleInstall, effect: 'english-reader: local install route' },
   { path: PATHS.engine, handler: handleEngineInstall, effect: 'english-reader: local engine route' },
+  { path: PATHS.update, handler: (request, response) => handleUpdate(request, response, () => manager), effect: 'english-reader: self update route' },
   { path: PATHS.translateOptions, resource: handleTranslateOptions, effect: 'english-reader: translation options route' },
   { path: PATHS.translateModels, resource: handleTranslateModels, effect: 'english-reader: translation models route' },
   { path: PATHS.models, resource: handleModels, effect: 'english-reader: endpoint models route' },
@@ -990,6 +1044,17 @@ function bindRoute(route, config, ctx) {
  * @param {{microsoftKey?: string, microsoftRegion?: string, tencentSecretId?: string, tencentSecretKey?: string, target?: string}} config - the plugin row's config.
  */
 export function apply(ctx, config) {
+  // Updating this plugin is the plugin manager's job; without it the panel's
+  // version row still reports, and only the button refuses.
+  let manager = null;
+  // A bare host (and a test double) may have no injection helper at all.
+  if (typeof ctx.inject === 'function') {
+    ctx.effect(() => ctx.inject(['pluginManager'], (scope) => {
+      manager = scope.pluginManager;
+      return () => { manager = null; };
+    }), 'english-reader: plugin manager');
+  }
+
   ctx.effect(() => {
     void mkdir(modelDir(), { recursive: true }).catch(() => {});
     void hasModel();

@@ -12,7 +12,7 @@ import assert from 'node:assert/strict'
 import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 
 // The host keeps its files under DSH_HOME; point that at a scratch folder so a
@@ -545,3 +545,50 @@ test('the plugin unloads after the speech worker started', async () => {
   assert.doesNotThrow(() => { for (const dispose of disposers) dispose(); }, 'unload must not throw');
   assert.equal(speech.worker, null, 'the handle is cleared, so the next synthesis starts a new one');
 });
+
+test('the locked commit is read from the profile lockfile', async () => {
+  const update = await import('../host/update.js');
+  const root = mkdtempSync(join(tmpdir(), 'er-update-'));
+  try {
+    assert.equal(update.currentCommit(root), null, 'no lockfile, no commit');
+    writeFileSync(join(root, 'pnpm-lock.yaml'), [
+      'importers:',
+      '  .',
+      '    dependencies:',
+      '      dsh-english-reader:',
+      '        specifier: github:KNtnx/dsh-english-reader#main',
+      '        version: https://codeload.github.com/KNtnx/dsh-english-reader/tar.gz/7bdb81f47e1d38bbd4d4a7f82e5868f980b605ec(debug@4.4.3)',
+      '      msedge-tts:',
+      '        specifier: ^2.1.1',
+      '        version: 2.1.1',
+    ].join('\n'));
+    assert.equal(update.currentCommit(root), '7bdb81f47e1d38bbd4d4a7f82e5868f980b605ec', 'the tar.gz URL carries the commit');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+})
+
+test('a newer commit is offered and installed as a pinned spec', async () => {
+  const update = await import('../host/update.js');
+  const sha = '8ee9c5a3e6b177dbb8ea35428284853d556808fe';
+  const seen = [];
+  const manager = { installBundle: async (spec) => { seen.push(spec); return { application: 'applied' } } };
+  const latest = { sha, message: 'fix: something', date: '2026-11-28T00:00:00Z' };
+
+  const newer = await update.checkForUpdate({ current: '0'.repeat(40), fetch: async () => ({ ok: true, json: async () => ({ sha, commit: { message: 'fix: something', committer: { date: latest.date } } }) }) });
+  assert.equal(newer.newer, true, 'a different commit is an update');
+  const same = await update.checkForUpdate({ current: sha, fetch: async () => ({ ok: true, json: async () => ({ sha, commit: { message: 'x', committer: { date: '' } } }) }) });
+  assert.equal(same.newer, false, 'the locked commit is not an update');
+
+  await update.applyUpdate(manager, sha);
+  assert.deepEqual(seen, [`github:KNtnx/dsh-english-reader#${sha}`], 'the manager gets a spec pinned to the full commit');
+  assert.throws(() => update.applyUpdate(manager, 'abcdef1'), /full commit/, 'a short sha is refused before anything is installed');
+})
+
+test('a failed update check never throws through the route', async () => {
+  const update = await import('../host/update.js');
+  await assert.rejects(
+    update.checkForUpdate({ current: null, fetch: async () => ({ ok: false, status: 403 }) }),
+    /GitHub answered 403/,
+  );
+})
