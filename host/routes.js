@@ -6,7 +6,7 @@ import { defaultModelRoute, secret, targetLanguage } from './model.js';
 import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startEngineInstall, startInstall, stopWorker, synthesize, synthesizeApi } from './speech.js';
 import { translateWithAzure, translateWithGoogle, translateWithModel, translateWithTencent, translateWithVolcengine } from './translate.js';
 import { scheduleUninstallReap } from './uninstall.js';
-import { applyUpdate, checkForUpdate } from './update.js';
+import { applyUpdate, checkForUpdate, installedShape, targetFits } from './update.js';
 
 /** Required host services: the HTTP route registry. */
 export const inject = ['webServer'];
@@ -347,9 +347,15 @@ async function handleUpdate(request, response, managerOf) {
       body = null;
     }
   }
-  const sha = typeof body?.sha === 'string' ? body.sha : '';
-  if (!/^[0-9a-f]{40}$/i.test(sha)) {
-    response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'a full commit is required' }));
+  // The target keeps the install shape: a version for a registry install, a full
+  // commit for a Git one. An npm install must never be turned into a Git one.
+  const shape = installedShape();
+  const mode = shape.kind === 'registry' ? 'registry' : 'git';
+  const target = typeof body?.target === 'string' ? body.target
+    : typeof body?.sha === 'string' ? body.sha : '';
+  if (!targetFits(target, mode)) {
+    response.writeHead(400, { 'content-type': 'application/json' })
+      .end(JSON.stringify({ error: mode === 'registry' ? 'a version is required' : 'a full commit is required' }));
     return;
   }
   const manager = managerOf();
@@ -360,8 +366,8 @@ async function handleUpdate(request, response, managerOf) {
   // Answer first: installing replaces this very package, so the reply must be on
   // the wire before the profile reloads.
   response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
-    .end(JSON.stringify({ started: true, target: sha }));
-  void applyUpdate(manager, sha).catch(() => {});
+    .end(JSON.stringify({ started: true, target }));
+  void applyUpdate(manager, target, mode).catch(() => {});
 }
 
 /**

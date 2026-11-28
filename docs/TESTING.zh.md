@@ -84,7 +84,7 @@ bsk_inspect screenshot              # 三张：阅读页、设置卡片、我的
 
 ```bash
 npm install                 # 一次性：react / react-dom / jsdom 是 devDependencies
-timeout 300 node --test test/        # 全套，约 3 秒，149 项
+timeout 300 node --test test/        # 全套，约 3 秒，150 项
 ```
 
 单文件、单用例：

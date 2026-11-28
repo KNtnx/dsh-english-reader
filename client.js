@@ -1720,6 +1720,11 @@ function sameLibrary(left, right) {
       // The plugin page has no update button for a Git-installed bundle: DSH
       // offers one only to catalog entries with a known target version. So the
       // panel carries it, and the host does the comparing and the installing.
+      // A registry install names versions, a Git install names commits: the row
+      // says whichever one the profile actually installed.
+      const shortRef = (value) => (update?.mode === 'registry'
+        ? String(value ?? '')
+        : String(value ?? '').slice(0, 7))
       const versionNote = update === null
         ? t('version.unknown')
         : update.phase === 'checking'
@@ -1729,8 +1734,8 @@ function sameLibrary(left, right) {
             : update.phase === 'applied'
               ? t('version.applied')
               : update.newer === true
-                ? fill(t('version.available'), { sha: String(update.latest ?? '').slice(0, 7) })
-                : `${t('version.upToDate')} · ${String(update.current ?? '').slice(0, 7)}`
+                ? fill(t('version.available'), { sha: shortRef(update.latest) })
+                : `${t('version.upToDate')} · ${shortRef(update.current)}`
       const versionBlock = h('div', { className: 'er-version' },
         h('p', { className: 'er-fine' }, `${t('version.label')} · ${versionNote}`),
         h('button', {
@@ -3674,7 +3679,7 @@ function sameLibrary(left, right) {
           const response = await fetch(UPDATE, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ sha: target }),
+            body: JSON.stringify({ target }),
           })
           if (!response.ok) throw new Error(`HTTP ${String(response.status)}`)
           setUpdate((current) => ({ ...current, phase: 'applied' }))

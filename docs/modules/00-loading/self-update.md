@@ -2,11 +2,16 @@
 
 ## 职责
 
-让插件**自己**把新提交装上来。DSH 的插件页只给「目录条目」更新按钮——它得知道一个目标版本号；从 Git spec 装的包没有目标版本，页面永远只显示来源和版本，点不了。所以按钮长在面板里：宿主问 GitHub 要 `main` 上的最新提交，跟 profile 锁文件里钉住的那条比，再把精确的 spec 交给插件管理器安装。
+让插件**自己**判断有没有新版本并装上**同一形态**的下一版。DSH 的插件页只给「目录条目」和 registry 依赖更新按钮；从 Git spec 装的包在页面上永远没有按钮，所以面板里也留了一个。判定按安装形态分流：
+
+- **npm（registry）装**：比版本号（自己 `package.json` 的 `version` 对 registry 的 `latest`），装 `dsh-english-reader@<版本>`；
+- **Git 装**：比提交（`git ls-remote` 拿 `main` 的头，对 profile 锁文件里钉住的那条），装 `github:…#<完整提交>`。
+
+按下按钮**不会**改变安装形态：npm 装的还是 npm 装，Git 装的还是 Git 装。
 
 ## 位置
 
-- `host/update.js` :: `REPO`, `COMMIT`, `currentCommit`, `gitHead`, `latestCommit`, `checkForUpdate`, `applyUpdate`
+- `host/update.js` :: `REPO`, `COMMIT`, `currentCommit`, `installedShape`, `ownVersion`, `gitHead`, `latestCommit`, `latestVersion`, `checkForUpdate`, `targetFits`, `applyUpdate`
 - `host/routes.js` :: `handleUpdate`, `apply`（`pluginManager` 软依赖）
 - `host/constants.js` :: `PATHS.update`
 - `client.js` :: `UPDATE`, `checkUpdate`, `applyUpdate`, `versionBlock`, `versionNote`
@@ -16,13 +21,15 @@
 | 调用 | 行为 | 回答 |
 | --- | --- | --- |
 | `GET /api-dsh-english-reader/update` | 读 `pnpm-lock.yaml` 里本包的提交，`git ls-remote` 问 `main` 的头 | `{current, latest, newer, message, date}`；取不到时 502 `{error}` |
-| `POST /…/update` body `{sha}` | 先回 202，再 `installBundle('github:KNtnx/dsh-english-reader#<sha>')` | 202 `{started, target}`；缺 `sha` 或不是 40 位提交 → 400；没有插件管理器 → 503 |
+| `POST /…/update` body `{target}` | 先回 202，再 `installBundle`：registry 装 `dsh-english-reader@<版本>`，Git 装钉住提交的 spec | 202 `{started, target}`；目标与形态不匹配（`targetFits`）→ 400；没有插件管理器 → 503 |
 | 面板「引擎」区底部 | 一行版本状态 + 一个按钮：没查过显示「版本未知」，查过显示「已是最新 · sha」或「有新版本：sha」 | 按钮文案随之在「检查更新 / 立即更新 / 正在更新…」之间切换 |
 
 ## 不变量
 
 - **先回复再安装**：`installBundle` 会替换正在运行的包并重载 profile，晚一秒回包就永远回不出去。所以 202 先落地，安装扔给后台。
-- **只用完整提交**：管理器的 Git 安装要求 spec `#` 后面正好是 40 位提交（`COMMIT`）；短 sha 或分支名会被它拒。面板传的是 API 回来的全 sha。
+- **只用完整提交**：管理器的 Git 安装要求 spec `#` 后面正好是 40 位提交（`COMMIT`）；短 sha 或分支名会被它拒。面板传的是 `git ls-remote` 回来的全 sha。
+- **形态由 profile 决定，不由按钮决定**：`installedShape` 读 profile `package.json` 的依赖形态（版本号 / `github:` / `link:`）；`link:` 属于第三种，面板不提供更新（本地目录自己 `git pull`）。这是这条通道不被投诉「我一按它把我从 npm 变成了 Git 装」的原因。
+- **registry 模式只问版本**：`GET registry.npmjs.org/dsh-english-reader/latest` 拿 `version`，不发 GitHub API、不看提交。
 - **比较的是提交，不是版本号**：`package.json` 的 `version` 不参与判断——从 Git 装的包按提交走，版本号只影响插件页显示。
 - **插件管理器是软依赖**：没有它（或宿主没有 `inject`）时路由照常注册，只有 POST 回 503；检查更新仍然可用。
 - **不用 GitHub API 取提交**：`git ls-remote` 不要 token、不吃速率限制；未认证的 commits 接口用光配额就回 403（实测踩过）。API 只用来补一句提交说明，失败就当没有，不影响判断。

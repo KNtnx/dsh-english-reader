@@ -630,3 +630,37 @@ test('the update route wants a full commit and a plugin manager', async () => {
   await new Promise((resolve) => setTimeout(resolve, 20));
   assert.deepEqual(installed, [`github:KNtnx/dsh-english-reader#${sha}`], 'the manager gets a pinned spec');
 })
+
+test('the update follows the install shape, never changing it', async () => {
+  const update = await import('../host/update.js');
+  const sha = 'c06c806880d1b96e169a9dbc64e7ca93c644eb73';
+  const root = mkdtempSync(join(tmpdir(), 'er-shape-'));
+  const write = (spec) => writeFileSync(join(root, 'package.json'), JSON.stringify({ dependencies: { 'dsh-english-reader': spec } }));
+  try {
+    write('0.2.4');
+    assert.deepEqual(update.installedShape(root), { kind: 'registry', spec: '0.2.4' });
+    write(`github:KNtnx/dsh-english-reader#${sha}`);
+    assert.equal(update.installedShape(root).kind, 'git');
+    write('link:/somewhere');
+    assert.equal(update.installedShape(root).kind, 'unknown', 'a checkout is neither shape');
+
+    // A registry install compares versions and installs a version: pressing the
+    // button must not turn an npm install into a Git one.
+    write('0.2.4');
+    const registry = await update.checkForUpdate({
+      root, version: '0.2.4', fetch: async () => ({ ok: true, json: async () => ({ version: '0.2.6' }) }),
+    });
+    assert.equal(registry.mode, 'registry');
+    assert.equal(registry.newer, true);
+    const seen = [];
+    const manager = { installBundle: async (spec) => { seen.push(spec); return {} } };
+    await update.applyUpdate(manager, '0.2.6', 'registry');
+    assert.deepEqual(seen, ['dsh-english-reader@0.2.6']);
+    assert.equal(update.targetFits('0.2.6', 'registry'), true);
+    assert.equal(update.targetFits(sha, 'registry'), false, 'a commit is not a registry target');
+    assert.equal(update.targetFits(sha, 'git'), true);
+    assert.equal(update.targetFits('0.2.6', 'git'), false, 'a version is not a Git target');
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+})
