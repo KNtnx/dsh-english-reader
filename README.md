@@ -153,6 +153,19 @@ dsh plugin --profile web add link:./dsh-english-reader
 - 本机模型、来源配置与对话库分别在 `$DSH_HOME/dsh-english-reader/models/`、`sources.json` 与 `library.json`，不上传。
 - 翻译与语音请求只从宿主发起，面板不直连第三方。
 
+### 卸载
+
+删掉插件只删代码。重装以后你的数据还在：
+
+| 内容 | 卸载后 | 位置 |
+| --- | --- | --- |
+| 单词、对话、夹子、删除记录 | **保留** | `$DSH_HOME/dsh-english-reader/library.json` |
+| 语音来源与密钥、词典设置 | **保留** | 同目录的 `sources.json`、`dictionary.json` |
+| 本地模型（约 113 MB） | **删除** | `models/`，需要时重新下载 |
+| 语音引擎包（`kokoro-js` 等，约 120 MB） | **删除** | profile 的 `node_modules`，下次点「下载」时重装 |
+
+模型与引擎包是插件按需装的，卸载后一分钟内被收走；库和密钥是用户数据，永远不动。想在卸载前留一份，把整个 `$DSH_HOME/dsh-english-reader/` 复制出去即可。
+
 ## 排错
 
 | 现象 | 处理 |

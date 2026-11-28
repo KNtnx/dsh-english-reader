@@ -13,6 +13,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,6 +21,7 @@ import { fileURLToPath } from 'node:url'
 
 import { engineReady } from '../host/engine.js'
 import { engineFailureOf } from '../host/speech.js'
+import { removeModels, removalCommand, scheduleUninstallReap } from '../host/uninstall.js'
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url))
 const MANIFEST = JSON.parse(await readFile(join(ROOT, 'package.json'), 'utf8'))
@@ -169,4 +171,63 @@ test('only engine failures ask for a new worker', () => {
   assert.equal(engineFailureOf({ message: 'failed to load model: protobuf parsing failed' }), false)
   assert.equal(engineFailureOf({ message: 'libonnxruntime.so: cannot open shared object file' }), false)
   assert.equal(engineFailureOf(null), false)
+})
+
+/** A home-shaped tree: the model next to the library, the way the host keeps them. */
+async function fakeHome() {
+  const home = await mkdtemp(join(tmpdir(), 'er-home-'))
+  const models = join(home, 'dsh-english-reader', 'models')
+  await mkdir(join(models, 'onnx-community', 'Kokoro-82M-v1.0-ONNX', 'onnx'), { recursive: true })
+  await writeFile(join(models, 'onnx-community', 'Kokoro-82M-v1.0-ONNX', 'onnx', 'model.onnx'), 'weights')
+  await writeFile(join(home, 'dsh-english-reader', 'library.json'), '{"words":[],"items":[],"folders":[],"removed":[]}')
+  return { home, models }
+}
+
+test('uninstalling takes the model and leaves the library', async () => {
+  const { home, models } = await fakeHome()
+  try {
+    assert.equal(removeModels(models), true, 'the model directory is deleted')
+    assert.equal(existsSync(models), false)
+    assert.equal(existsSync(join(home, 'dsh-english-reader', 'library.json')), true, 'the words stay, only the model goes')
+    assert.equal(removeModels(models), false, 'deleting twice is not an error')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('only a real profile has engine packages to remove', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'er-profile-'))
+  try {
+    assert.equal(removalCommand(root), null, 'a checkout without a lockfile has nothing to remove')
+    await writeFile(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - .\n')
+    assert.equal(removalCommand(root), null, 'no engine installed, nothing to remove')
+    await mkdir(join(root, 'node_modules', 'kokoro-js'), { recursive: true })
+    assert.deepEqual(removalCommand(root), { command: 'pnpm', args: ['remove', 'kokoro-js'], label: 'pnpm remove kokoro-js' })
+  } finally {
+    await rm(root, { recursive: true, force: true })
+  }
+})
+
+test('the reap waits for the package to disappear and stands down on a reload', async () => {
+  // The plugin is disposed *before* pnpm removes it, so the first look cannot
+  // tell an uninstall from a reload. The watcher looks again, and only the
+  // uninstall (a missing package directory) frees the model.
+  const { home, models } = await fakeHome()
+  const plugin = join(home, 'node_modules', 'dsh-english-reader')
+  const root = join(home, 'profile')
+  await mkdir(root, { recursive: true })
+  await mkdir(plugin, { recursive: true })
+  await writeFile(join(plugin, 'package.json'), '{"name":"dsh-english-reader"}')
+  try {
+    scheduleUninstallReap({ plugin, root, models, delays: [10, 30] })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    assert.equal(existsSync(models), true, 'a reload keeps the model')
+
+    await rm(plugin, { recursive: true, force: true })
+    scheduleUninstallReap({ plugin, root, models, delays: [10, 30] })
+    await new Promise((resolve) => setTimeout(resolve, 120))
+    assert.equal(existsSync(models), false, 'an uninstall takes it')
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
 })

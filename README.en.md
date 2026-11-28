@@ -161,6 +161,19 @@ A translation is tagged with the source and model that produced it, so switching
 - Local models, source records and the dialogue library live under `$DSH_HOME/dsh-english-reader/` and are not uploaded.
 - Translation and speech requests are made from the host, never from the panel.
 
+### Uninstalling
+
+Removing the plugin removes the code only. Your data is still there on reinstall:
+
+| What | After removal | Where |
+| --- | --- | --- |
+| Words, dialogues, folders, tombstones | **kept** | `$DSH_HOME/dsh-english-reader/library.json` |
+| Speech sources and keys, dictionary settings | **kept** | `sources.json`, `dictionary.json` in the same folder |
+| The local model (about 113 MB) | **deleted** | `models/`, downloaded again when asked |
+| The engine packages (`kokoro-js` and its tree, about 120 MB) | **deleted** | the profile's `node_modules`, reinstalled by the next download |
+
+The model and the engine are installed on demand, so they leave with the plugin within a minute of removal; the library and the keys are user data and never move. To keep a copy, copy `$DSH_HOME/dsh-english-reader/` somewhere first.
+
 ## Troubleshooting
 
 | Symptom | Fix |

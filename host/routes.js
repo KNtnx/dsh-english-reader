@@ -5,6 +5,7 @@ import { defineWithModel, dictKey, lookUpChinese, lookUpCollins, lookUpWord, loo
 import { defaultModelRoute, secret, targetLanguage } from './model.js';
 import { ask, cache, checkModelPath, firstThatAnswers, hasModel, isSpeechModel, local, localStatus, orderedCandidates, pending, resolveModelPath, resolvedUrls, startEngineInstall, startInstall, stopWorker, synthesize, synthesizeApi } from './speech.js';
 import { translateWithAzure, translateWithGoogle, translateWithModel, translateWithTencent, translateWithVolcengine } from './translate.js';
+import { scheduleUninstallReap } from './uninstall.js';
 
 /** Required host services: the HTTP route registry. */
 export const inject = ['webServer'];
@@ -1001,6 +1002,11 @@ export function apply(ctx, config) {
       // The worker's own module owns the handle: assigning to an imported
       // binding from here throws, and used to abort the rest of the unload.
       stopWorker();
+      // `pnpm remove` runs no script of the package it deletes, so an uninstall
+      // has to be recognised afterwards: the model and the engine would otherwise
+      // outlive the plugin and keep about 230 MB. A reload or a disable keeps the
+      // package directory, and the watcher stands down on its first look.
+      scheduleUninstallReap();
     };
   }, 'english-reader: speech worker');
 

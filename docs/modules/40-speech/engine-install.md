@@ -2,12 +2,13 @@
 
 ## 职责
 
-把「本地引擎」从用户必须自己动手的 peer 依赖，变成点一下就能装上的东西，同时不把 120 MB 和 CUDA 探测塞回插件安装：面板先说明将执行什么，宿主用 `pnpm add --ignore-scripts` 装一次，worker 照常解析，模型下载接着开始。
+把「本地引擎」从用户必须自己动手的 peer 依赖，变成点一下就能装上的东西，同时不把 120 MB 和 CUDA 探测塞回插件安装：面板先说明将执行什么，宿主用 `pnpm add --ignore-scripts` 装一次，worker 照常解析，模型下载接着开始。卸载时反过来——插件被删掉以后，模型与引擎这两个可重建的大件要跟着走，而单词库、来源与词典设置是用户数据，必须留下。
 
 ## 位置
 
 - `host/engine.js` :: `engineRoot`, `engineReady`, `engineStatus`, `installCommand`, `startEngineInstall`, `denyEngineBuilds`, `engine`, `ENGINE_SPEC`, `ENGINE_BYTES_APPROX`
-- `host/routes.js` :: `handleEngineInstall`
+- `host/routes.js` :: `handleEngineInstall`, `scheduleUninstallReap`
+- `host/uninstall.js` :: `pluginDirectory`, `removalCommand`, `removeModels`, `removeEngine`, `reapNow`, `scheduleUninstallReap`
 - `host/constants.js` :: `PATHS.engine`
 - `host/speech.js` :: `localStatus`, `startEngineInstall`, `startInstall`, `engineFailureOf`
 - `client.js` :: `installModel`, `installEngine`, `cancelEngine`, `renderEnginePrompt`, `engineInstalling`
@@ -19,6 +20,7 @@
 | `POST /local/engine` | `startEngineInstall()` 起一次后台安装（已在装则忽略），落地后丢掉旧 worker | 202 `{started:true}`；进度看 `/local/status` 的 `engine.phase` |
 | `GET /local/status` | 检查 `engineRoot()` 下四个包是否齐全 | `engine: {phase: missing/installing/ready/error, error, log}` |
 | 面板「安装引擎并下载」 | 先弹确认（命令、约 120 MB、只装一次） | 取消：不发请求；确认：POST engine → 轮询 → `ready` 后 POST `/local/install` |
+| 插件被卸载 | dispose 时留下一个观察者（5s / 20s / 60s 各看一次包目录还在不在） | 包目录消失 = 卸载：删 `models/` 与 `pnpm remove kokoro-js`；包目录还在 = 热重载或停用：什么都不做 |
 
 ## 不变量
 
@@ -31,6 +33,9 @@
 - **失败可解释**：命令的非零退出、超时与 ENOENT 都写进 `engine.error`，面板展示并保留 README 里的手动命令。
 - **顺手关掉后续审批**：`denyEngineBuilds` 把 `onnxruntime-node@版本`、`sharp@版本` 写成 `false`，否则以后普通 `pnpm install` 会再问一次构建，批准就会把包丢掉；YAML 形状不认识时原样不动。
 - **只碰安装面**：会改 profile 的 `package.json`/lockfile（`pnpm add` 的副作用）与 `pnpm-workspace.yaml`；不碰 `$DSH_HOME` 的库、密钥与模型。
+- **卸载带走可重建的，留下用户数据**：`models/`（约 113 MB）与 `pnpm remove kokoro-js`（连同它拖进来的 `onnxruntime-node`/`sharp`/`transformers` 约 120 MB）跟着插件走；`library.json`、`sources.json`、`dictionary.json` 一个字节不动，重装后原样接上。
+- **「卸载」只能事后判定**：DSH 与 pnpm 都没有卸载钩子——`pnpm remove` 只删包，不跑被删包的脚本（实测）。所以判定靠观察包目录是否消失，且必须在 dispose 之后再等一会儿：dispose 发生在停用之后、`pnpm remove` 之前。
+- **热重载不能被误判**：包目录还在就立刻收手，观察者不产生任何副作用；`unref` 保证它不会拖住宿主退出。宿主提前退出，文件就留着——尽力而为，不是保证。
 
 ## 相邻模块
 
@@ -45,6 +50,7 @@
 - **加一个装引擎的入口**：面板继续调 `installModel` 即可，确认框集中在 `renderEnginePrompt`；不要在别处直接 POST 引擎路由。
 - **改状态字段**：`engineStatus` 的 phase、`client.js` 的 `engineInstalling`、设置卡与添加来源对话框三处一起改，否则会「装着装着又变回未安装」。
 - **改审批策略**：`denyEngineBuilds` 针对 `onnxruntime-node` 与 `sharp` 两个版本化键；上游升级版本后要重新跑一次。
+- **改卸载范围**：要删什么、留什么只在 `host/uninstall.js` 里改；`removalCommand` 只删 `kokoro-js`（其余是它的传递依赖，跟着走）——别把整棵 `node_modules` 交给它。
 
 ## 读代码顺序
 
@@ -54,3 +60,4 @@
 4. `denyEngineBuilds` 的 YAML 编辑。
 5. `client.js` 的 `installModel` → `renderEnginePrompt` → resume effect。
 6. `localStatus` 如何把引擎状态带给面板。
+7. `host/uninstall.js`：为什么不删库、为什么用观察者而不是钩子、三个时间点各看什么。
