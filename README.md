@@ -47,21 +47,27 @@
 
 ## 安装
 
-**方式一：从 GitHub 安装（推荐）**
+**方式一：从 npm 安装（推荐）**
 
-在 DSH 的 **插件 → 添加插件** 里填：
+在 DSH 的 **插件 → 添加插件** 里填包名：
 
 ```
-github:KNtnx/dsh-english-reader
+dsh-english-reader
 ```
 
 或命令行：
 
 ```bash
-dsh plugin --profile web add github:KNtnx/dsh-english-reader
+dsh plugin --profile web add dsh-english-reader
 ```
 
-**方式二：本地目录**
+从 npm 装的好处是**插件详情页自带「更新到 x.y.z」**（DSH 按版本号比较 registry 依赖），点一下就更新，不用重装。
+
+**方式二：从 GitHub 安装**
+
+填 `github:KNtnx/dsh-english-reader`（或 `dsh plugin --profile web add github:KNtnx/dsh-english-reader`）。跟随 `main` 的最新提交；插件页不会给它更新按钮（DSH 只给 registry 依赖），但面板里的「检查更新 / 立即更新」照样能用。
+
+**方式三：本地目录**
 
 ```bash
 git clone https://github.com/KNtnx/dsh-english-reader.git
@@ -152,6 +158,18 @@ dsh plugin --profile web add link:./dsh-english-reader
 - API 密钥只存宿主，不以任何形式下发到浏览器，也不写进前端存储。
 - 本机模型、来源配置与对话库分别在 `$DSH_HOME/dsh-english-reader/models/`、`sources.json` 与 `library.json`，不上传。
 - 翻译与语音请求只从宿主发起，面板不直连第三方。
+
+### 更新
+
+三种方式，按你装的方式挑一种就行：
+
+| 你的安装方式 | 怎么更新 |
+| --- | --- |
+| npm | 插件详情页点「更新到 x.y.z」；或面板设置里的「检查更新 / 立即更新」 |
+| GitHub | 面板设置里的「检查更新」→「立即更新」（它会装成钉住提交的形式）；或者 `dsh plugin --profile web update dsh-english-reader` 后重启 |
+| 本地目录（`link:`） | 在那个目录里 `git pull`，然后重启 DSH |
+
+面板里的「版本」行在 **设置 → 引擎** 区底部：显示当前提交，点「检查更新」会去问仓库最新的 `main` 提交（用 `git ls-remote`，不需要 token）。装了新版本后如果改到客户端（`client.js`），刷新一下页面。
 
 ### 卸载
 

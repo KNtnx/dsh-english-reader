@@ -26,6 +26,7 @@
 | client-registration | `apply(ctx)` 的 5 处注册：tab 类型、面板体、整页、按钮、输入框入口 | [client-registration.md](./client-registration.md) |
 | locale-resources | `locale/*.json` 只管插件详情页，界面文案在 `10-panel/copy` | [locale-resources.md](./locale-resources.md) |
 | self-update | 面板里的「检查更新」：插件页给不了 Git 包的更新按钮，所以按钮长在自己身上 | [self-update.md](./self-update.md) |
+| release | 怎么发货：Git 看提交、npm 看版本号；首发的 tarball 会迟到几分钟 | [release.md](./release.md) |
 
 ## 数据流
 

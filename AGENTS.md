@@ -46,6 +46,7 @@ node --test --test-name-pattern "gloss" test/  # 单用例
 | `english_reader` 工具的动作 | [60-tool](./docs/modules/60-tool/README.md) |
 | 写测试、跑测试、为什么有这些用例 | [70-testing](./docs/modules/70-testing/README.md) + `docs/TESTING.zh.md` |
 | 插件自己更新、插件页没有更新按钮 | [00-loading/self-update](./docs/modules/00-loading/self-update.md) |
+| 发新版本、发 npm、版本号怎么定 | [00-loading/release](./docs/modules/00-loading/release.md) |
 | 插件装不上、本地引擎缺失、安装期依赖报错 | [70-testing/install-contract](./docs/modules/70-testing/install-contract.md) + README 的安装与排错段 |
 
 ## 模块地图

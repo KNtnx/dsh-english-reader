@@ -47,19 +47,25 @@ The settings card has four collapsible sections; only the engine starts open, an
 
 ## Install
 
-**From GitHub (recommended)**
+**From npm (recommended)**
 
-In DSH **Plugins → Add plugin**, enter:
+In DSH **Plugins → Add plugin**, enter the package name:
 
 ```
-github:KNtnx/dsh-english-reader
+dsh-english-reader
 ```
 
 Or on the command line:
 
 ```bash
-dsh plugin --profile web add github:KNtnx/dsh-english-reader
+dsh plugin --profile web add dsh-english-reader
 ```
+
+An npm install is the one shape the plugin page can update: it compares registry versions and offers **Update to x.y.z** in place.
+
+**From GitHub**
+
+Enter `github:KNtnx/dsh-english-reader` (or `dsh plugin --profile web add github:KNtnx/dsh-english-reader`). It follows the latest commit on `main`; the plugin page offers no update button for it (DSH only does that for registry dependencies), but **Check for updates / Update now** in the panel still works.
 
 **From a local checkout**
 
@@ -160,6 +166,16 @@ A translation is tagged with the source and model that produced it, so switching
 - API keys stay on the host and are never sent to the browser or written to browser storage.
 - Local models, source records and the dialogue library live under `$DSH_HOME/dsh-english-reader/` and are not uploaded.
 - Translation and speech requests are made from the host, never from the panel.
+
+### Updating
+
+| How you installed it | How to update |
+| --- | --- |
+| npm | **Update to x.y.z** on the plugin page, or **Check for updates / Update now** in the panel |
+| GitHub | **Check for updates / Update now** in the panel (it reinstalls pinned to a commit), or `dsh plugin --profile web update dsh-english-reader` and restart |
+| Local checkout (`link:`) | `git pull` in that directory, then restart DSH |
+
+The version row lives at the bottom of **Settings → Engine**: it shows the installed commit, and **Check for updates** asks the repository for the head of `main` (`git ls-remote`, no token needed). If a release touched `client.js`, refresh the page.
 
 ### Uninstalling
 
