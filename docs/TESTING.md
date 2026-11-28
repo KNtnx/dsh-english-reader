@@ -23,7 +23,7 @@ The browser procedure — the twelve-step pass that every release and every stru
 
 ```bash
 npm install     # once; react, react-dom and jsdom are devDependencies
-npm test        # every file under test/, ~3 s, 147 cases
+npm test        # every file under test/, ~3 s, 148 cases
 ```
 
 While fixing something, one file at a time:

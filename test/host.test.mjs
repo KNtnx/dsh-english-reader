@@ -98,6 +98,8 @@ function registerRoutes(services = {}) {
   const context = {
     effect: (fn) => { const dispose = fn(); return typeof dispose === 'function' ? dispose : () => {} },
     get: (name) => services[name],
+    // Cordis' soft dependency: hand the callback the services that exist.
+    inject: (names, run) => run(Object.fromEntries(names.filter((name) => services[name] !== undefined).map((name) => [name, services[name]]))),
     webServer: {
       register: (route) => { routes.set(route.path, route); return () => {} },
     },
@@ -603,4 +605,28 @@ test('a repository that cannot be reached is reported, not thrown', async () => 
     update.checkForUpdate({ current: null, git: async () => 'not a commit' }),
     /named no commit/,
   );
+})
+
+test('the update route wants a full commit and a plugin manager', async () => {
+  const sha = 'c06c806880d1b96e169a9dbc64e7ca93c644eb73';
+  const bare = registerRoutes({});
+  const route = bare.get(`${PREFIX}/update`);
+  assert.ok(route !== undefined, 'the route is registered even without a manager');
+
+  const bad = await callHandler(route, { method: 'POST', body: { sha: 'abcdef1' } });
+  assert.equal(bad.status, 400, 'a short sha is refused');
+  assert.equal((await callHandler(route, { method: 'POST', body: {} })).status, 400);
+
+  const noManager = await callHandler(route, { method: 'POST', body: { sha } });
+  assert.equal(noManager.status, 503, 'no plugin manager, no install');
+
+  // With a manager the answer is 202 before the install finishes: the install
+  // replaces this package, so waiting for it would never answer.
+  const installed = [];
+  const withManager = registerRoutes({ pluginManager: { installBundle: async (spec) => { installed.push(spec); return { application: 'applied' } } } });
+  const started = await callHandler(withManager.get(`${PREFIX}/update`), { method: 'POST', body: { sha } });
+  assert.equal(started.status, 202);
+  assert.equal(started.body.target, sha);
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assert.deepEqual(installed, [`github:KNtnx/dsh-english-reader#${sha}`], 'the manager gets a pinned spec');
 })

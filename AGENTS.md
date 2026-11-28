@@ -15,7 +15,7 @@
 
 ```bash
 npm install                                    # react / react-dom / jsdom
-timeout 300 node --test test/                  # 全量，约 3 秒，147 项
+timeout 300 node --test test/                  # 全量，约 3 秒，148 项
 node --test test/panel.dict.test.mjs           # 单文件
 node --test --test-name-pattern "gloss" test/  # 单用例
 ```

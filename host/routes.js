@@ -321,7 +321,7 @@ function handleInstall(request, response) {
  * @param {import('node:http').ServerResponse} response - the response to complete.
  * @param {() => any} managerOf - reads the plugin manager service, when present.
  */
-function handleUpdate(request, response, managerOf) {
+async function handleUpdate(request, response, managerOf) {
   if (request.method === 'GET') {
     void checkForUpdate()
       .then((result) => {
@@ -338,29 +338,30 @@ function handleUpdate(request, response, managerOf) {
     response.writeHead(405, { 'content-type': 'text/plain' }).end('method not allowed');
     return;
   }
-  void readBody(request, 4096).then((raw) => {
-    let body = null;
+  const raw = await readBody(request, 4096);
+  let body = null;
+  if (raw.chunks !== undefined) {
     try {
-      body = JSON.parse(raw);
+      body = JSON.parse(Buffer.concat(raw.chunks).toString('utf8'));
     } catch {
       body = null;
     }
-    const sha = typeof body?.sha === 'string' ? body.sha : '';
-    if (!/^[0-9a-f]{40}$/i.test(sha)) {
-      response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'a full commit is required' }));
-      return;
-    }
-    const manager = managerOf();
-    if (manager === null) {
-      response.writeHead(503, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'the plugin manager is not available' }));
-      return;
-    }
-    // Answer first: installing replaces this very package, so the reply must be
-    // on the wire before the profile reloads.
-    response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
-      .end(JSON.stringify({ started: true, target: sha }));
-    void applyUpdate(manager, sha).catch(() => {});
-  });
+  }
+  const sha = typeof body?.sha === 'string' ? body.sha : '';
+  if (!/^[0-9a-f]{40}$/i.test(sha)) {
+    response.writeHead(400, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'a full commit is required' }));
+    return;
+  }
+  const manager = managerOf();
+  if (manager === null || manager === undefined) {
+    response.writeHead(503, { 'content-type': 'application/json' }).end(JSON.stringify({ error: 'the plugin manager is not available' }));
+    return;
+  }
+  // Answer first: installing replaces this very package, so the reply must be on
+  // the wire before the profile reloads.
+  response.writeHead(202, { 'content-type': 'application/json', 'cache-control': 'no-store' })
+    .end(JSON.stringify({ started: true, target: sha }));
+  void applyUpdate(manager, sha).catch(() => {});
 }
 
 /**
@@ -1008,7 +1009,7 @@ const ROUTES = [
   { path: PATHS.status, resource: handleStatus, effect: 'english-reader: local status route' },
   { path: PATHS.install, handler: handleInstall, effect: 'english-reader: local install route' },
   { path: PATHS.engine, handler: handleEngineInstall, effect: 'english-reader: local engine route' },
-  { path: PATHS.update, handler: (request, response) => handleUpdate(request, response, () => manager), effect: 'english-reader: self update route' },
+  { path: PATHS.update, handler: (request, response) => handleUpdate(request, response, () => pluginManager), effect: 'english-reader: self update route' },
   { path: PATHS.translateOptions, resource: handleTranslateOptions, effect: 'english-reader: translation options route' },
   { path: PATHS.translateModels, resource: handleTranslateModels, effect: 'english-reader: translation models route' },
   { path: PATHS.models, resource: handleModels, effect: 'english-reader: endpoint models route' },
@@ -1043,15 +1044,17 @@ function bindRoute(route, config, ctx) {
  * @param {import('@deepseek-ai/cordis').Context} ctx - host root context.
  * @param {{microsoftKey?: string, microsoftRegion?: string, tencentSecretId?: string, tencentSecretKey?: string, target?: string}} config - the plugin row's config.
  */
+/** The profile's plugin manager while it is mounted; the update route installs through it. */
+let pluginManager = null;
+
 export function apply(ctx, config) {
   // Updating this plugin is the plugin manager's job; without it the panel's
   // version row still reports, and only the button refuses.
-  let manager = null;
   // A bare host (and a test double) may have no injection helper at all.
   if (typeof ctx.inject === 'function') {
     ctx.effect(() => ctx.inject(['pluginManager'], (scope) => {
-      manager = scope.pluginManager;
-      return () => { manager = null; };
+      pluginManager = scope.pluginManager ?? null;
+      return () => { pluginManager = null; };
     }), 'english-reader: plugin manager');
   }
 
